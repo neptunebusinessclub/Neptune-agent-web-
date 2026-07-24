@@ -150,7 +150,7 @@ app.get("/v1/missions/:missionId", async (c) => {
     deviceId: mission.device_id,
     goal: mission.goal,
     status: mission.status,
-    context: safeJson(mission.context_json),
+    context: safeJson(mission.context_json ?? "{}"),
     actions: actionRows.results.map(rowToAction),
     createdAt: mission.created_at,
     updatedAt: mission.updated_at
