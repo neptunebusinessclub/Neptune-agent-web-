@@ -1,0 +1,59 @@
+name: Neptune Runtime Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/runtime/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/runtime-windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/runtime/src-tauri
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Generate Neptune application icons
+        run: pnpm --filter @neptune/runtime exec tauri icon icon.svg
+
+      - name: Build Windows installers
+        run: pnpm --filter @neptune/runtime exec tauri build --bundles nsis,msi
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: neptune-runtime-windows
+          path: |
+            apps/runtime/src-tauri/target/release/bundle/nsis/*.exe
+            apps/runtime/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 30
