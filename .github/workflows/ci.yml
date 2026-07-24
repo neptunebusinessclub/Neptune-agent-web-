@@ -30,27 +30,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Typecheck
-        id: typecheck
-        shell: bash
-        run: |
-          set +e
-          pnpm typecheck > typecheck.log 2>&1
-          code=$?
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          tail -n 80 typecheck.log
-          exit 0
-
-      - name: Upload typecheck diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: typecheck-diagnostics
-          path: typecheck.log
-          retention-days: 3
-
-      - name: Enforce typecheck result
-        if: steps.typecheck.outputs.exit_code != '0'
-        run: exit 1
+        run: pnpm typecheck
 
       - name: Tests
         run: pnpm test
