@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Neptune Agent Web",
+  "short_name": "Neptune",
+  "version": "0.1.0",
+  "description": "Agent navigateur Neptune avec validation humaine des actions sensibles.",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "sidePanel",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8787/*",
+    "https://*.workers.dev/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Ouvrir Neptune Agent"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}
