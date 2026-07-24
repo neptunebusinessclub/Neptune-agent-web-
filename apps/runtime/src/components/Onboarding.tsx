@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getNativeBridgeStatus, registerBrowserExtensionHost } from "../lib/browser";
+import { speakWithSystemVoice, stopSpeaking } from "../lib/runtime";
 import type { IntelligenceProvider, NativeBridgeStatus, TrustLevel, UserPreferences, VoiceOption } from "../types";
 
 const TRUST_LEVELS: Array<{ id: TrustLevel; title: string; description: string }> = [
@@ -59,6 +60,23 @@ export function Onboarding({
     };
   }, []);
 
+  useEffect(() => {
+    const name = preferences.preferredName.trim();
+    const lines = [
+      "Bonjour. Je suis Neptune. Avant de commencer, comment dois-je vous appeler ?",
+      `${name ? `Merci ${name}. ` : ""}Choisissez maintenant ma voix. Vous pouvez pré-écouter chaque proposition.`,
+      "Quel niveau de confiance m’accordez-vous ? Je vous expliquerai toujours les actions sensibles avant de les exécuter.",
+      "Choisissez maintenant le moteur d’intelligence que je dois utiliser. Vous pourrez le changer plus tard.",
+      "Souhaitez-vous m’activer en disant Neptune, ou OK Neptune ?",
+      "Dernière étape. Relions-moi à votre navigateur pour que je travaille dans un onglet séparé."
+    ];
+    const timer = window.setTimeout(() => speakWithSystemVoice(lines[step] ?? ""), 260);
+    return () => {
+      window.clearTimeout(timer);
+      stopSpeaking();
+    };
+  }, [step]);
+
   const canContinue =
     (step === 0 && preferences.preferredName.trim().length >= 2)
     || (step === 1 && Boolean(preferences.voiceId))
@@ -73,6 +91,7 @@ export function Onboarding({
       setStep((current) => current + 1);
       return;
     }
+    stopSpeaking();
     const provider = providers.find((item) => item.id === preferences.providerId);
     const modelId = preferences.modelId || provider?.models[0] || "";
     onComplete({ ...preferences, modelId, onboardingComplete: true });
