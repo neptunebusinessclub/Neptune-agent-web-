@@ -13,7 +13,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
             echo '### CI — erreurs TypeScript'
             echo
             echo '```text'
-            tail -n 120 typecheck.log
+            tail -n 160 typecheck.log
             echo '```'
           } > typecheck-comment.md
           gh pr comment "$PR_NUMBER" --body-file typecheck-comment.md
@@ -72,7 +72,7 @@ jobs:
             echo '### CI — erreurs de tests'
             echo
             echo '```text'
-            tail -n 120 tests.log
+            tail -n 160 tests.log
             echo '```'
           } > tests-comment.md
           gh pr comment "$PR_NUMBER" --body-file tests-comment.md
@@ -84,6 +84,9 @@ jobs:
       - name: Build extension
         run: pnpm --filter @neptune/extension build
 
+      - name: Build Neptune Runtime preview
+        run: pnpm --filter @neptune/runtime build
+
       - name: Dry-run Cloudflare Worker
         run: pnpm --filter @neptune/worker-api build
 
@@ -93,5 +96,14 @@ jobs:
         with:
           name: neptune-agent-extension
           path: apps/extension/dist
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Neptune Runtime preview
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: neptune-runtime-preview
+          path: apps/runtime/dist
           if-no-files-found: error
           retention-days: 30
