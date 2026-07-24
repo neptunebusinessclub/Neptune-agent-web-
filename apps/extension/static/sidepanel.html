@@ -3,77 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Neptune — Compagnon navigateur</title>
+  <meta name="color-scheme" content="dark" />
+  <title>Neptune</title>
   <link rel="stylesheet" href="sidepanel.css" />
 </head>
 <body>
-  <main class="app-shell">
-    <header class="topbar">
-      <div class="brand-mark" aria-hidden="true">N</div>
-      <div class="brand-copy">
-        <p class="eyebrow">NEPTUNE</p>
-        <h1>Compagnon navigateur</h1>
-      </div>
-      <span id="companion-status" class="status status-checking">Initialisation</span>
-    </header>
-
-    <section id="onboarding-view" class="experience-card onboarding-view">
-      <div id="progress" class="progress" aria-label="Progression de l’installation"></div>
-      <div class="orb-stage" aria-hidden="true">
-        <div class="orb-halo halo-one"></div>
-        <div class="orb-halo halo-two"></div>
-        <div class="orb-ring ring-one"></div>
-        <div class="orb-ring ring-two"></div>
-        <div class="orb-core">N</div>
-      </div>
-      <div id="step-content" class="step-content"></div>
-      <footer class="onboarding-actions">
-        <button id="back-step" class="ghost-button" type="button">Retour</button>
-        <button id="next-step" class="primary-button" type="button">Continuer</button>
-      </footer>
-    </section>
-
-    <section id="companion-view" class="companion-view hidden">
-      <section class="experience-card ready-card">
-        <div class="compact-orb" aria-hidden="true"><span>N</span></div>
-        <div>
-          <p class="eyebrow">BRAS NAVIGATEUR</p>
-          <h2>Neptune est prêt à agir</h2>
-          <p>Donnez vos instructions dans l’application Neptune. Cette extension ouvre un onglet de travail séparé et exécute uniquement les actions autorisées.</p>
-        </div>
-      </section>
-
-      <section class="status-grid" aria-live="polite">
-        <article class="status-card">
-          <span class="status-icon online"></span>
-          <div><strong>Extension</strong><small id="extension-detail">Vérification…</small></div>
-        </article>
-        <article class="status-card">
-          <span class="status-icon neutral"></span>
-          <div><strong>Application Neptune</strong><small>Doit rester ouverte pendant les missions</small></div>
-        </article>
-      </section>
-
-      <section class="experience-card instructions-card">
-        <p class="eyebrow">COMMENT L’UTILISER</p>
-        <ol>
-          <li>Ouvrez l’application Neptune.</li>
-          <li>Dites ou écrivez votre objectif.</li>
-          <li>Neptune travaille dans un nouvel onglet et vous demande confirmation si nécessaire.</li>
-        </ol>
-      </section>
-
-      <section class="safety-card">
-        <strong>Limites permanentes</strong>
-        <p>Paiements, suppressions, signatures, mots de passe et engagements contractuels restent soumis à votre confirmation explicite.</p>
-      </section>
-
-      <div class="companion-actions">
-        <button id="check-extension" class="primary-button" type="button">Vérifier la connexion</button>
-        <button id="restart-onboarding" class="ghost-button" type="button">Revoir l’installation</button>
-      </div>
-    </section>
-  </main>
+  <main id="app" class="app-shell" aria-live="polite"></main>
   <script type="module" src="sidepanel.js"></script>
 </body>
 </html>
