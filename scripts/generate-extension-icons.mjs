@@ -1,9 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = resolve(scriptDirectory, "..");
 const sizes = [16, 32, 48, 128];
-const output = resolve("apps/extension/static/icons");
+const output = resolve(repositoryRoot, "apps/extension/static/icons");
 mkdirSync(output, { recursive: true });
 
 for (const size of sizes) {
