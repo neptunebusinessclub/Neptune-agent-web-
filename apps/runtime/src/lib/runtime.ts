@@ -17,11 +17,12 @@ const DEFAULT_PROVIDERS: IntelligenceProvider[] = [
     id: "ollama",
     name: "Ollama",
     kind: "local",
-    description: "Installation locale légère avec téléchargement de modèles.",
+    description: "Installation locale légère avec téléchargement de modèles en un clic.",
     endpoint: "http://127.0.0.1:11434",
     status: "unknown",
     models: [],
-    requiresKey: false
+    requiresKey: false,
+    recommended: true
   },
   {
     id: "mammouth",
@@ -86,6 +87,15 @@ async function probeProviderInPreview(provider: IntelligenceProvider): Promise<I
   return provider;
 }
 
+export async function installOllamaModel(provider: IntelligenceProvider, model: string): Promise<string> {
+  if (provider.id !== "ollama") throw new Error("Ce téléchargement est réservé à Ollama.");
+  const result = await invoke<{ model: string; status: string }>("install_ollama_model", {
+    endpoint: provider.endpoint ?? null,
+    model
+  });
+  return result.status;
+}
+
 export async function saveProviderSecret(providerId: string, secret: string): Promise<void> {
   if (!secret.trim()) throw new Error("La clé est vide.");
   await invoke("save_provider_secret", { providerId, secret });
@@ -113,8 +123,9 @@ export async function askIntelligence(
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return {
-      text: `${userName ? `${userName}, ` : ""}je ne peux pas encore joindre le moteur ${provider.name}. Ouvre Intelligence et vérifie qu’il est connecté.`,
-      blockedReason: reason
+      text: `${userName ? `${userName}, ` : ""}je ne peux pas encore joindre le moteur ${provider.name}. Ouvrez Intelligence et vérifiez qu’il est connecté.`,
+      blockedReason: reason,
+      actions: []
     };
   }
 }
