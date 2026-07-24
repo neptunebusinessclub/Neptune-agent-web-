@@ -175,7 +175,12 @@ async function getActiveTab(): Promise<chrome.tabs.Tab> {
 }
 
 function publicTab(tab: chrome.tabs.Tab | null): { id?: number; url?: string; title?: string } | null {
-  return tab ? { id: tab.id, url: tab.url, title: tab.title } : null;
+  if (!tab) return null;
+  return {
+    ...(typeof tab.id === "number" ? { id: tab.id } : {}),
+    ...(typeof tab.url === "string" ? { url: tab.url } : {}),
+    ...(typeof tab.title === "string" ? { title: tab.title } : {})
+  };
 }
 
 function safeInitialUrl(rawUrl?: string): string {

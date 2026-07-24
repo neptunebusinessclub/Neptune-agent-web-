@@ -118,7 +118,7 @@ export async function askIntelligence(
       await prepareChromeAi(userName, () => undefined);
     }
     const transcript = cleanMessages.map((message) => `${message.role === "user" ? "Utilisateur" : "Neptune"}: ${message.content}`).join("\n\n");
-    return chromeSession!.prompt(transcript, { signal });
+    return chromeSession!.prompt(transcript, signal ? { signal } : undefined);
   }
 
   const response = await callOpenAiCompatible(provider, [
@@ -151,7 +151,7 @@ export async function planBrowserTask(
 
   if (provider.id === "chrome-local") {
     if (!chromeSession || chromeSessionOwner !== userName) await prepareChromeAi(userName, () => undefined);
-    raw = await chromeSession!.prompt(prompt, { signal });
+    raw = await chromeSession!.prompt(prompt, signal ? { signal } : undefined);
   } else {
     raw = await callOpenAiCompatible(provider, [
       { role: "system", content: plannerPrompt(userName, trustLevel) },

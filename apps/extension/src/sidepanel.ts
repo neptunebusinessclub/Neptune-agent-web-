@@ -315,6 +315,7 @@ async function nextOnboardingStep(): Promise<void> {
   if (step === 3) {
     if (preferences.providerId === "chrome-local" && chromeAiStatus !== "available") {
       await downloadLocalAi();
+      chromeAiStatus = await getChromeAiAvailability();
       if (chromeAiStatus !== "available") return;
     }
     if (preferences.providerId !== "chrome-local" && !providerSecretSaved) {
@@ -450,7 +451,7 @@ async function submitMessage(text: string): Promise<void> {
   } finally {
     busy = false;
     abortController = null;
-    if (!pendingApproval && !blockedMission && orbState !== "speaking") orbState = "idle";
+    if (!pendingApproval && !blockedMission) orbState = "idle";
     render();
   }
 }
@@ -815,11 +816,11 @@ function voiceOptionsMarkup(): string {
 }
 
 function trustOptionsMarkup(): string {
-  return [
+  return ([
     ["prudent", "Prudent", "Je demande avant toute écriture, publication ou communication externe."],
     ["assisted", "Collaborateur", "Une autorisation peut couvrir une mission clairement définie."],
     ["controlled", "Autonome contrôlé", "J’agis dans les règles et quotas approuvés, sans toucher aux actions sensibles."]
-  ].map(([id, title, description]) => choiceButton("select-trust", id, title, description, preferences.trustLevel === id)).join("");
+  ] as const).map(([id, title, description]) => choiceButton("select-trust", id, title, description, preferences.trustLevel === id)).join("");
 }
 
 function providerOptionsMarkup(): string {
