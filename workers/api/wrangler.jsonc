@@ -15,8 +15,7 @@
     {
       "binding": "DB",
       "database_name": "neptune-agent-db",
-      // Remplacer après `wrangler d1 create neptune-agent-db`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "86c202ea-58d9-4564-8d4d-b9525c0e7536",
       "migrations_dir": "migrations"
     }
   ],
