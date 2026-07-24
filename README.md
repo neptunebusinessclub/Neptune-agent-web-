@@ -1,161 +1,150 @@
-# Neptune Agent Web
+# Neptune — Assistant navigateur
 
-MVP d’un **agent navigateur contrôlé** pour Neptune : une extension Chrome/Edge Manifest V3 exécute localement des actions limitées, tandis qu’un moteur central Cloudflare prépare les missions, conserve leur état, gère les validations et journalise chaque étape.
+Neptune est une **extension Chrome Manifest V3 autonome**. Le client installe un seul composant, puis configure l’assistant directement dans le panneau latéral : prénom, voix, niveau de confiance, intelligence locale ou cloud, mot d’activation et accès aux sites.
 
-## Ce qui est déjà livré
+Aucun Runtime Windows, serveur local ou jeton technique Neptune n’est nécessaire.
 
-- monorepo TypeScript avec pnpm ;
-- extension Chrome/Edge avec panneau latéral Neptune ;
-- ouverture d’URL, lecture de page, clic, saisie et attente ;
-- catalogue d’actions fermé et validé par Zod ;
-- blocage local des communications externes sans autorisation ;
-- détection de CAPTCHA, activité inhabituelle et avertissements de plateforme ;
-- moteur Cloudflare Workers avec API Hono ;
-- persistance Cloudflare D1 ;
-- canal temps réel Durable Objects avec WebSocket Hibernation ;
-- journal d’audit des missions et actions ;
-- workflow de validation à durée limitée ;
-- arrêt manuel immédiat ;
-- tests des invariants de sécurité du protocole.
+## Expérience produit
+
+Au premier lancement, Neptune guide l’utilisateur en sept étapes :
+
+1. prénom d’usage ;
+2. choix et pré-écoute de la voix ;
+3. niveau de confiance ;
+4. moteur d’intelligence ;
+5. mot d’activation `Neptune` ou `OK Neptune` ;
+6. autorisation de l’onglet de travail ;
+7. première démonstration.
+
+Après l’onboarding, le panneau affiche uniquement :
+
+- l’hologramme Neptune et son état ;
+- la conversation textuelle ou vocale ;
+- les demandes d’autorisation ;
+- les blocages et boutons de reprise ;
+- l’arrêt immédiat ;
+- un écran de réglages et un journal local.
+
+## Intelligence
+
+### Chrome AI local
+
+Neptune utilise l’API Prompt intégrée à Chrome lorsque le poste est compatible. Chrome télécharge et gère le modèle local. Après installation, les échanges peuvent être traités sur l’ordinateur.
+
+### Mammouth AI
+
+L’utilisateur peut connecter sa propre clé Mammouth AI. Neptune utilise l’API compatible OpenAI et le modèle recommandé par défaut.
+
+### API compatible OpenAI
+
+L’utilisateur peut renseigner un endpoint HTTPS, un nom de modèle et sa clé API. Les clés sont chiffrées localement avec AES-GCM et ne sont jamais stockées dans le code source.
 
 ## Architecture
 
 ```text
-Extension Chrome / Edge
-  ├─ Side Panel : commande, plan, validation, journal
-  ├─ Service Worker : politique locale et orchestration des onglets
-  └─ Content Script : lecture et actions DOM autorisées
-                  │
-                  ▼
-Cloudflare Worker API
-  ├─ D1 : missions, actions, validations, audit
-  ├─ Durable Object : canal temps réel par appareil
-  └─ Planner fermé : actions JSON connues uniquement
+Extension Chrome Neptune
+├── Side Panel
+│   ├── onboarding
+│   ├── conversation et voix
+│   ├── sélection du LLM
+│   ├── permissions et validations
+│   └── journal local
+├── Service Worker
+│   ├── onglet de travail dédié
+│   ├── exécution du protocole d’actions
+│   └── politique de sécurité
+├── Content Script
+│   ├── lecture structurée de page
+│   ├── ciblage accessible
+│   └── clics et saisies contrôlés
+└── Stockage local
+    ├── préférences et historique
+    └── clés API chiffrées
 ```
 
-Le LLM n’exécute jamais de JavaScript arbitraire dans le navigateur. Toute future intégration LLM devra produire le même protocole JSON, puis passer la validation de schéma et le moteur de règles.
+Le LLM ne peut pas envoyer du JavaScript arbitraire. Il produit un plan JSON limité aux actions connues :
 
-## Pré-requis
+- `OPEN_URL`
+- `READ_PAGE`
+- `CLICK_ELEMENT`
+- `FILL_FIELD`
+- `SEND_MESSAGE`
+- `WAIT`
 
-- Node.js 22 ou plus récent ;
-- pnpm 10 ;
-- compte Cloudflare ;
-- Chrome ou Edge 114+.
+Le plan est normalisé et contrôlé avant exécution.
 
-## Installation locale
+## Sécurité
+
+Neptune refuse d’automatiser :
+
+- paiements et achats ;
+- virements, IBAN et cartes bancaires ;
+- mots de passe et codes secrets ;
+- suppressions de compte ;
+- signatures et engagements contractuels ;
+- contournements de CAPTCHA ou protections de plateforme.
+
+`SEND_MESSAGE` exige toujours une autorisation explicite. Les contrôles ambigus ne sont pas activés.
+
+## Construire le produit
+
+Pré-requis développeur : Node.js 22 et pnpm 10.
 
 ```bash
-pnpm install
+pnpm install --no-frozen-lockfile
 pnpm typecheck
 pnpm test
-pnpm build
-```
-
-## Configurer Cloudflare
-
-### 1. Se connecter
-
-```bash
-cd workers/api
-pnpm exec wrangler login
-```
-
-### 2. Créer D1
-
-```bash
-pnpm exec wrangler d1 create neptune-agent-db
-```
-
-Copier l’identifiant retourné dans `workers/api/wrangler.jsonc` à la place de `REPLACE_WITH_D1_DATABASE_ID`.
-
-### 3. Définir le secret API
-
-Générer un jeton long et aléatoire, puis :
-
-```bash
-pnpm exec wrangler secret put AGENT_API_TOKEN
-```
-
-Pour le développement local, créer `workers/api/.dev.vars` :
-
-```dotenv
-AGENT_API_TOKEN=remplacer-par-un-secret-long-et-aleatoire
-```
-
-### 4. Appliquer la base
-
-```bash
-pnpm db:migrate:local
-pnpm db:migrate:remote
-```
-
-### 5. Démarrer le moteur local
-
-Depuis la racine :
-
-```bash
-pnpm dev:api
-```
-
-L’API locale répond sur `http://127.0.0.1:8787`.
-
-## Installer l’extension de test
-
-```bash
 pnpm --filter @neptune/extension build
 ```
 
-Puis dans Chrome :
+Le dossier installable est :
+
+```text
+apps/extension/dist
+```
+
+## Installer la version de test
 
 1. ouvrir `chrome://extensions` ;
 2. activer **Mode développeur** ;
 3. cliquer sur **Charger l’extension non empaquetée** ;
 4. sélectionner `apps/extension/dist` ;
-5. ouvrir Neptune Agent depuis l’icône de l’extension ;
-6. renseigner l’URL API et le même jeton dans **Configuration**.
+5. ouvrir Neptune depuis l’icône de l’extension ;
+6. suivre l’onboarding affiché automatiquement.
 
-Après installation, récupérer l’identifiant de l’extension et remplacer `REPLACE_WITH_EXTENSION_ID` dans `workers/api/wrangler.jsonc`.
+## Artefact de production
 
-## Scénario de test
+Après fusion dans `main`, GitHub Actions produit :
 
-1. Saisir : `Ouvre Le Bon Coin et lis la page d’accueil.`
-2. Cliquer sur **Préparer la mission**.
-3. Contrôler le plan.
-4. Cliquer sur **Exécuter les actions autorisées**.
-5. Vérifier le journal local et les entrées D1.
+```text
+neptune-extension-production-v1.0.0.zip
+```
 
-Une mission contenant les mots `message`, `inviter`, `prospect`, `followers` ou `abonnés` est automatiquement placée en validation humaine avant toute action externe.
+Cet artefact est prêt pour les tests de recette et la soumission Chrome Web Store. La publication publique nécessite encore le compte éditeur, les visuels de fiche, l’URL publique de confidentialité et la validation de Google.
 
-## Commandes
+## Recette minimale
 
-| Commande | Rôle |
-|---|---|
-| `pnpm dev:api` | Lancer le Worker local |
-| `pnpm dev:extension` | Reconstruire l’extension en continu |
-| `pnpm build` | Construire tous les modules |
-| `pnpm typecheck` | Vérifier TypeScript |
-| `pnpm test` | Exécuter les tests |
+- première ouverture : onboarding affiché, aucune configuration technique ;
+- choix d’une voix et pré-écoute ;
+- Chrome AI local ou fournisseur cloud configuré ;
+- autorisation des sites accordée depuis l’onboarding ;
+- commande : `Ouvre Le Bon Coin et lis la page d’accueil.` ;
+- nouvel onglet Neptune créé ;
+- page lue et résultat résumé dans la conversation ;
+- envoi externe bloqué jusqu’à validation ;
+- CAPTCHA ou avertissement de plateforme : mission suspendue ;
+- arrêt immédiat : aucune action suivante exécutée.
 
-## Limites actuelles du MVP
+## Limitations assumées de la version 1.0
 
-- le planner est déterministe, pas encore connecté à un LLM ;
-- l’adaptateur Instagram spécialisé n’est pas encore livré ;
-- `SEND_MESSAGE` ne fonctionne que lorsqu’un champ et un bouton d’envoi non ambigus sont détectés ;
-- aucune logique de contournement, de CAPTCHA, de furtivité ou d’anti-détection n’est prévue ;
-- aucune collecte massive de followers n’est implémentée ;
-- la publication Chrome Web Store reste à réaliser après audit des permissions et tests.
-
-## Règles non négociables
-
-- aucune remontée de cookies, mots de passe ou sessions vers Cloudflare ;
-- aucune action externe sans autorisation explicite et non expirée ;
-- arrêt immédiat en présence d’un avertissement de plateforme ;
-- aucune exécution de code distant dans l’extension ;
-- journalisation de chaque action et de son résultat ;
-- adaptateurs spécialisés versionnés avant l’usage Instagram ou LinkedIn en production.
+- le mot d’activation fonctionne lorsque le panneau Neptune reste ouvert ;
+- la reconnaissance vocale dépend du service disponible dans Chrome ;
+- l’intelligence locale dépend de la compatibilité Chrome et matérielle du poste ;
+- aucun scraping massif ou envoi en volume n’est inclus ;
+- aucune logique de furtivité ou d’anti-détection n’est développée.
 
 Voir également :
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/PRODUCTION_SCOPE.md`](docs/PRODUCTION_SCOPE.md)
 - [`docs/SECURITY.md`](docs/SECURITY.md)
-- [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- [`apps/extension/static/privacy.html`](apps/extension/static/privacy.html)
