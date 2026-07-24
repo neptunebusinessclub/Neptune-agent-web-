@@ -42,6 +42,13 @@ textarea:focus, input:focus { border-color: #8c5cff; box-shadow: 0 0 0 3px rgba(
 .status-online { color: #7ff0bf; background: rgba(50, 211, 148, .12); }
 .status-offline { color: #ff9aad; background: rgba(255, 77, 111, .12); }
 
+.mission-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.voice-button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(158, 125, 255, .34); border-radius: 999px; padding: 7px 10px; background: rgba(126, 88, 255, .11); color: #d9d1ff; font-size: 11px; font-weight: 800; }
+.voice-button:hover { border-color: rgba(158, 125, 255, .62); background: rgba(126, 88, 255, .18); }
+.voice-button.listening { border-color: rgba(255, 77, 160, .68); background: rgba(255, 77, 160, .16); color: #ffd5e8; box-shadow: 0 0 0 4px rgba(255, 77, 160, .08); }
+.voice-status { min-height: 16px; margin-top: 7px; color: #9ca4b8; font-size: 10px; }
+.work-tab-note { margin-top: 8px; color: #7f879c; font-size: 10px; line-height: 1.4; }
+
 .approval-card { border-color: rgba(255, 187, 73, .35); background: linear-gradient(160deg, rgba(75, 52, 14, .75), rgba(24, 22, 28, .95)); }
 .approval-card h2 { margin-top: 5px; font-size: 16px; }
 .approval-card > p:not(.eyebrow) { margin-top: 8px; color: #d9d2c5; font-size: 12px; line-height: 1.5; }

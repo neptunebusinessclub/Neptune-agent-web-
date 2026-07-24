@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Neptune Agent Web",
   "short_name": "Neptune",
-  "version": "0.1.0",
-  "description": "Agent navigateur Neptune avec validation humaine des actions sensibles.",
+  "version": "0.2.0",
+  "description": "Agent navigateur Neptune avec onglet de travail dédié et validation humaine des actions sensibles.",
   "minimum_chrome_version": "114",
   "permissions": [
     "activeTab",
@@ -13,8 +13,8 @@
     "tabs"
   ],
   "host_permissions": [
-    "http://127.0.0.1:8787/*",
-    "https://*.workers.dev/*"
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
