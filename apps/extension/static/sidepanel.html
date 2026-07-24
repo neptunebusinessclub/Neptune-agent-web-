@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neptune Agent</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div class="brand-mark">N</div>
+      <div>
+        <p class="eyebrow">NEPTUNE</p>
+        <h1>Agent Web</h1>
+      </div>
+      <span id="connection-status" class="status status-offline">Hors ligne</span>
+    </header>
+
+    <section class="card config-card">
+      <button id="toggle-config" class="link-button" type="button">Configuration</button>
+      <div id="config-panel" class="config-panel hidden">
+        <label>
+          URL du moteur Cloudflare
+          <input id="api-url" type="url" placeholder="http://127.0.0.1:8787" />
+        </label>
+        <label>
+          Jeton API
+          <input id="api-token" type="password" autocomplete="off" placeholder="Jeton de test" />
+        </label>
+        <button id="save-config" class="secondary-button" type="button">Enregistrer</button>
+      </div>
+    </section>
+
+    <section class="card mission-card">
+      <label for="goal">Mission</label>
+      <textarea id="goal" rows="5" placeholder="Ex. Ouvre Le Bon Coin et cherche des bureaux à Toulouse."></textarea>
+      <div class="button-row">
+        <button id="create-mission" class="primary-button" type="button">Préparer la mission</button>
+        <button id="stop-mission" class="danger-button" type="button" disabled>Arrêter</button>
+      </div>
+    </section>
+
+    <section id="approval-card" class="card approval-card hidden" aria-live="polite">
+      <p class="eyebrow">VALIDATION REQUISE</p>
+      <h2>Action sensible détectée</h2>
+      <p id="approval-summary"></p>
+      <div class="button-row">
+        <button id="approve" class="primary-button" type="button">Autoriser cette mission</button>
+        <button id="deny" class="secondary-button" type="button">Refuser</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-heading">
+        <h2>Plan d’action</h2>
+        <span id="mission-status" class="muted">Aucune mission</span>
+      </div>
+      <ol id="action-list" class="action-list"></ol>
+      <button id="run-mission" class="primary-button full-width" type="button" disabled>Exécuter les actions autorisées</button>
+    </section>
+
+    <section class="card log-card">
+      <div class="section-heading">
+        <h2>Journal</h2>
+        <button id="clear-log" class="link-button" type="button">Effacer</button>
+      </div>
+      <div id="log" class="log" aria-live="polite"></div>
+    </section>
+  </main>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
