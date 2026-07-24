@@ -1,18 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "Neptune Agent Web",
+  "name": "Neptune — Assistant navigateur",
   "short_name": "Neptune",
-  "version": "0.2.0",
-  "description": "Agent navigateur Neptune avec onglet de travail dédié et validation humaine des actions sensibles.",
-  "minimum_chrome_version": "114",
+  "version": "1.0.0",
+  "version_name": "1.0 Production",
+  "description": "Assistant navigateur conversationnel, vocal et contrôlé, avec intelligence locale ou cloud.",
+  "minimum_chrome_version": "138",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8aMcGOx/IT2nMVJlMpbtEDmWi3NwTu0Aw5qgxxBOffzwi+H7Fx27J6QrHmS9G0rOYphUWvwD0NV8FkcGUZ7RnTfw1lqS2SmwiQT/9kMVKgUoN6vgVq9M2/2/sYV85SOD6UIHrQzijBdLktYSlg+T6qLXuogW1tMHWvRRPhy/GuKDZ++7i0+5cwdfHSejol30pvQphQ6lLrE9bqU0S9+/niuckt2JN63tO35cehzxcp7hCgqG4iLB2xOp218aD+Pz/N3ZFfynBJPgSmKQtgafDFNKABbj4ayo8koi1nVLhIyzSb4WKCVei/PZQB6isrpL6RbkHVgFwYL7/CgCcYA6ZwIDAQAB",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": [
     "activeTab",
     "scripting",
     "sidePanel",
     "storage",
-    "tabs"
+    "tabs",
+    "unlimitedStorage"
   ],
-  "host_permissions": [
+  "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
   ],
@@ -21,9 +30,27 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Ouvrir Neptune Agent"
+    "default_title": "Ouvrir Neptune",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "commands": {
+    "activate-neptune": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+N",
+        "mac": "Command+Shift+N"
+      },
+      "description": "Ouvrir Neptune"
+    }
   },
   "side_panel": {
     "default_path": "sidepanel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "neptune-agent-web",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "scripts": {
@@ -9,9 +9,7 @@
     "test": "pnpm -r --if-present test",
     "dev:api": "pnpm --filter @neptune/worker-api dev",
     "dev:extension": "pnpm --filter @neptune/extension dev",
-    "dev:runtime": "pnpm --filter @neptune/runtime dev",
-    "desktop:runtime": "pnpm --filter @neptune/runtime tauri dev",
-    "build:runtime": "pnpm --filter @neptune/runtime build"
+    "build:extension": "pnpm --filter @neptune/extension build"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

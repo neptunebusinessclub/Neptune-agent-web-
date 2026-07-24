@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confidentialité — Neptune</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#070916;color:#eef2ff}body{max-width:760px;margin:0 auto;padding:36px 22px;line-height:1.65}h1,h2{letter-spacing:-.025em}h1{font-size:34px}h2{margin-top:32px;font-size:20px}p,li{color:#b6c0d8}a{color:#74cfff}code{padding:2px 6px;border-radius:6px;background:#151a31}.note{padding:15px;border:1px solid #30385d;border-radius:14px;background:#0e1226}
+  </style>
+</head>
+<body>
+  <h1>Politique de confidentialité de Neptune</h1>
+  <p>Version du 24 juillet 2026.</p>
+  <p class="note">Neptune est conçu pour minimiser les données transmises. Les préférences, l’historique local, le journal des missions et les clés fournisseur restent dans le profil Chrome de l’utilisateur, sauf lorsqu’une requête doit être envoyée au fournisseur d’intelligence choisi par l’utilisateur.</p>
+
+  <h2>Données conservées localement</h2>
+  <ul>
+    <li>prénom d’usage, voix, niveau de confiance et mot d’activation ;</li>
+    <li>historique conversationnel et journal des missions ;</li>
+    <li>configuration du fournisseur d’intelligence ;</li>
+    <li>clés API chiffrées localement avec AES-GCM.</li>
+  </ul>
+
+  <h2>Données transmises</h2>
+  <p>Lorsque l’intelligence locale de Chrome est utilisée, le traitement du texte est effectué sur l’ordinateur. Lorsqu’un fournisseur cloud est choisi, les messages nécessaires à la réponse ou à la planification sont envoyés directement à ce fournisseur selon ses propres conditions.</p>
+  <p>Pour accomplir une mission navigateur, Neptune lit uniquement les pages ouvertes dans son onglet de travail et n’envoie au moteur d’intelligence que le contexte nécessaire à l’objectif demandé.</p>
+
+  <h2>Permissions navigateur</h2>
+  <p>L’accès aux sites est demandé pendant l’onboarding. Il sert à lire et manipuler les pages dans l’onglet de travail Neptune. L’extension ne revend ni ne contourne les protections de sécurité des plateformes.</p>
+
+  <h2>Actions sensibles</h2>
+  <p>Neptune refuse d’automatiser les paiements, achats, suppressions de compte, mots de passe, signatures, virements et contournements de CAPTCHA. Les communications externes exigent une autorisation explicite selon le niveau de confiance configuré.</p>
+
+  <h2>Suppression des données</h2>
+  <p>L’utilisateur peut effacer la conversation et le journal depuis les réglages. La désinstallation de l’extension supprime les données associées au profil Chrome, sous réserve des mécanismes de synchronisation ou de sauvegarde de Chrome.</p>
+
+  <h2>Contact</h2>
+  <p>Responsable du produit : Neptune Business Club. Les coordonnées de contact et la version publique de cette politique doivent être renseignées sur la fiche Chrome Web Store avant publication.</p>
+</body>
+</html>
