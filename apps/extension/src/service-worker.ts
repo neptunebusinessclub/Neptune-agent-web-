@@ -167,7 +167,11 @@ async function getActiveTab(): Promise<chrome.tabs.Tab> {
   return tab;
 }
 
-function publicTab(tab: chrome.tabs.Tab): { id?: number; url?: string; title?: string } {
+function publicTab(tab: chrome.tabs.Tab): {
+  id: number | undefined;
+  url: string | undefined;
+  title: string | undefined;
+} {
   return { id: tab.id, url: tab.url, title: tab.title };
 }
 
