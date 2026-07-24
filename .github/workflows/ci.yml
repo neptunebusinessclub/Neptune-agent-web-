@@ -31,6 +31,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Upload source diagnostic snapshot
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-source-diagnostic
+          path: apps/extension/src
+          retention-days: 1
+
       - name: Typecheck
         id: typecheck
         continue-on-error: true
