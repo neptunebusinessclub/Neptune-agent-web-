@@ -13,13 +13,13 @@
   },
   "dependencies": {
     "@neptune/protocol": "workspace:*",
-    "hono": "^4.8.5",
+    "hono": "^4.12.31",
     "zod": "^3.25.67"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260724.0",
+    "@cloudflare/workers-types": "^5.20260716.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",
-    "wrangler": "^4.25.0"
+    "wrangler": "^4.114.0"
   }
 }
