@@ -52,8 +52,49 @@ export type ConversationMessage = {
   tone?: "normal" | "warning" | "permission";
 };
 
+export type BrowserTarget = {
+  selector?: string;
+  role?: string;
+  name?: string;
+  text?: string;
+};
+
+export type BrowserAction = {
+  id: string;
+  type: "OPEN_URL" | "READ_PAGE" | "CLICK_ELEMENT" | "FILL_FIELD" | "SEND_MESSAGE" | "WAIT";
+  label: string;
+  risk: "read_only" | "draft_write" | "external_write" | "sensitive";
+  requiresApproval: boolean;
+  target?: BrowserTarget;
+  value?: string;
+  url?: string;
+  delayMs?: number;
+  status: "pending" | "running" | "completed" | "failed" | "blocked";
+};
+
 export type RuntimeReply = {
   text: string;
   requiresPermission?: boolean;
   blockedReason?: string;
+  actions?: BrowserAction[];
+};
+
+export type NativeBridgeStatus = {
+  connected: boolean;
+  hostRegistered: boolean;
+  extensionId: string;
+};
+
+export type BrowserError = {
+  code: string;
+  message: string;
+  requiresHuman: boolean;
+  retryable: boolean;
+};
+
+export type BrowserResponse = {
+  requestId?: string;
+  ok: boolean;
+  result?: unknown;
+  error?: BrowserError | string;
 };

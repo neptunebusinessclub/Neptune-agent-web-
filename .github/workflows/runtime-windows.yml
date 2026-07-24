@@ -2,16 +2,26 @@ name: Neptune Runtime Windows
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/runtime/**"
+      - "apps/extension/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/runtime-windows.yml"
   push:
     branches: [main]
     paths:
       - "apps/runtime/**"
+      - "apps/extension/**"
       - "package.json"
       - "pnpm-workspace.yaml"
       - ".github/workflows/runtime-windows.yml"
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   build-windows:
@@ -45,10 +55,40 @@ jobs:
       - name: Generate Neptune application icons
         run: pnpm --filter @neptune/runtime exec tauri icon icon.svg
 
+      - name: Check native Runtime
+        run: cargo check --manifest-path apps/runtime/src-tauri/Cargo.toml
+
       - name: Build Windows installers
-        run: pnpm --filter @neptune/runtime exec tauri build --bundles nsis,msi
+        id: runtime_build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          pnpm --filter @neptune/runtime exec tauri build --bundles nsis,msi 2>&1 | Tee-Object runtime-build.log
+          $exitCode = $LASTEXITCODE
+          exit $exitCode
+
+      - name: Publish installer diagnostics
+        if: steps.runtime_build.outcome == 'failure' && github.event_name == 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          @(
+            "### Installateur Windows — erreur de compilation"
+            ""
+            "Les 180 dernières lignes du build :"
+            ""
+          ) | Set-Content runtime-comment.md
+          Get-Content runtime-build.log -Tail 180 | Add-Content runtime-comment.md
+          gh pr comment $env:PR_NUMBER --body-file runtime-comment.md
+
+      - name: Enforce installer result
+        if: steps.runtime_build.outcome == 'failure'
+        run: exit 1
 
       - name: Upload Windows installer
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: neptune-runtime-windows
