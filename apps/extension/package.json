@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node esbuild.mjs --watch",
-    "build": "node esbuild.mjs",
+    "dev": "node ../../scripts/generate-extension-icons.mjs && node esbuild.mjs --watch",
+    "build": "node ../../scripts/generate-extension-icons.mjs && node esbuild.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
