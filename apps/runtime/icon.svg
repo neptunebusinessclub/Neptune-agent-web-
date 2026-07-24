@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bg" cx="34%" cy="26%" r="82%">
+      <stop offset="0" stop-color="#86e7ff"/>
+      <stop offset="0.18" stop-color="#2baeff"/>
+      <stop offset="0.52" stop-color="#6558ff"/>
+      <stop offset="0.8" stop-color="#d94bc1"/>
+      <stop offset="1" stop-color="#100d2f"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="28" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="238" fill="#07091a"/>
+  <circle cx="512" cy="512" r="360" fill="none" stroke="#5f72ff" stroke-opacity=".23" stroke-width="8"/>
+  <circle cx="512" cy="512" r="286" fill="none" stroke="#53c8ff" stroke-opacity=".38" stroke-width="12" stroke-dasharray="26 34"/>
+  <circle cx="512" cy="512" r="220" fill="url(#bg)" filter="url(#glow)"/>
+  <circle cx="512" cy="512" r="202" fill="none" stroke="#ffffff" stroke-opacity=".2" stroke-width="6"/>
+  <path d="M362 689V335h78l146 214V335h78v354h-74L440 470v219z" fill="#fff"/>
+</svg>
