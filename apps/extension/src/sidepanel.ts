@@ -14,6 +14,48 @@ type RuntimeResponse = {
   tab?: { id?: number; url?: string; title?: string };
 };
 
+type SpeechRecognitionAlternativeLike = {
+  transcript: string;
+};
+
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  readonly length: number;
+  [index: number]: SpeechRecognitionAlternativeLike;
+};
+
+type SpeechRecognitionEventLike = Event & {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+
+type SpeechRecognitionErrorEventLike = Event & {
+  error: string;
+  message?: string;
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
+
 const elements = {
   apiUrl: get<HTMLInputElement>("api-url"),
   apiToken: get<HTMLInputElement>("api-token"),
@@ -22,6 +64,9 @@ const elements = {
   configPanel: get<HTMLDivElement>("config-panel"),
   connectionStatus: get<HTMLSpanElement>("connection-status"),
   goal: get<HTMLTextAreaElement>("goal"),
+  voiceInput: get<HTMLButtonElement>("voice-input"),
+  voiceLabel: get<HTMLSpanElement>("voice-label"),
+  voiceStatus: get<HTMLParagraphElement>("voice-status"),
   createMission: get<HTMLButtonElement>("create-mission"),
   stopMission: get<HTMLButtonElement>("stop-mission"),
   runMission: get<HTMLButtonElement>("run-mission"),
@@ -39,6 +84,9 @@ let config: StoredConfig;
 let mission: Mission | null = null;
 let approvedActionIds = new Set<string>();
 let stopped = false;
+let recognition: SpeechRecognitionLike | null = null;
+let listening = false;
+let voiceBaseText = "";
 
 void initialize();
 
@@ -46,6 +94,7 @@ async function initialize(): Promise<void> {
   config = await loadConfig();
   elements.apiUrl.value = config.apiUrl;
   elements.apiToken.value = config.apiToken;
+  setupVoiceInput();
   bindEvents();
   await checkConnection();
   addLog("Agent initialisé. Aucune action n’est exécutée sans mission explicite.");
@@ -54,12 +103,92 @@ async function initialize(): Promise<void> {
 function bindEvents(): void {
   elements.toggleConfig.addEventListener("click", () => elements.configPanel.classList.toggle("hidden"));
   elements.saveConfig.addEventListener("click", () => void saveConfig());
+  elements.voiceInput.addEventListener("click", toggleVoiceInput);
   elements.createMission.addEventListener("click", () => void createMission());
   elements.runMission.addEventListener("click", () => void runMission());
   elements.stopMission.addEventListener("click", () => void stopMission());
   elements.approve.addEventListener("click", () => void approveMission(true));
   elements.deny.addEventListener("click", () => void approveMission(false));
   elements.clearLog.addEventListener("click", () => { elements.log.replaceChildren(); });
+}
+
+function setupVoiceInput(): void {
+  const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+  if (!Recognition) {
+    elements.voiceInput.disabled = true;
+    elements.voiceLabel.textContent = "Indisponible";
+    elements.voiceStatus.textContent = "La dictée vocale n’est pas prise en charge par ce navigateur.";
+    return;
+  }
+
+  recognition = new Recognition();
+  recognition.lang = "fr-FR";
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    listening = true;
+    elements.voiceInput.classList.add("listening");
+    elements.voiceInput.setAttribute("aria-pressed", "true");
+    elements.voiceLabel.textContent = "Écoute…";
+    elements.voiceStatus.textContent = "Parlez normalement. Cliquez à nouveau pour arrêter.";
+  };
+
+  recognition.onresult = (event) => {
+    let transcript = "";
+    for (let index = 0; index < event.results.length; index += 1) {
+      const alternative = event.results[index]?.[0];
+      if (alternative?.transcript) transcript += `${alternative.transcript} `;
+    }
+    elements.goal.value = [voiceBaseText, transcript.trim()].filter(Boolean).join(" ").trim();
+  };
+
+  recognition.onerror = (event) => {
+    const message = voiceErrorMessage(event.error);
+    elements.voiceStatus.textContent = message;
+    addLog(message);
+  };
+
+  recognition.onend = () => {
+    listening = false;
+    elements.voiceInput.classList.remove("listening");
+    elements.voiceInput.setAttribute("aria-pressed", "false");
+    elements.voiceLabel.textContent = "Dicter";
+    if (!elements.voiceStatus.textContent?.includes("refusé")) {
+      elements.voiceStatus.textContent = elements.goal.value.trim()
+        ? "Dictée ajoutée à la mission."
+        : "Dictée arrêtée.";
+    }
+  };
+}
+
+function toggleVoiceInput(): void {
+  if (!recognition) return;
+  if (listening) {
+    recognition.stop();
+    return;
+  }
+
+  voiceBaseText = elements.goal.value.trim();
+  elements.voiceStatus.textContent = "Activation du microphone…";
+  try {
+    recognition.start();
+  } catch (error) {
+    addLog(errorMessage(error));
+  }
+}
+
+function voiceErrorMessage(error: string): string {
+  const messages: Record<string, string> = {
+    "not-allowed": "Accès au microphone refusé. Autorisez le microphone pour Neptune Agent dans Chrome.",
+    "service-not-allowed": "Le service de reconnaissance vocale est bloqué par Chrome.",
+    "no-speech": "Aucune voix détectée. Réessayez en parlant plus près du microphone.",
+    "audio-capture": "Aucun microphone disponible.",
+    network: "La reconnaissance vocale est momentanément indisponible.",
+    aborted: "Dictée arrêtée."
+  };
+  return messages[error] ?? `Erreur de dictée vocale : ${error}`;
 }
 
 async function loadConfig(): Promise<StoredConfig> {
@@ -110,15 +239,24 @@ async function createMission(): Promise<void> {
     return;
   }
 
+  if (listening) recognition?.stop();
   setBusy(true);
   try {
     const active = await sendRuntime({ type: "GET_ACTIVE_TAB" });
+    const sourceUrl = active.tab?.url;
+    const workspace = await sendRuntime({
+      type: "START_MISSION",
+      initialUrl: shouldCloneActivePage(goal) ? sourceUrl : undefined
+    });
+    if (!workspace.ok) throw new Error(workspace.error ?? "Impossible de créer l’onglet de travail");
+    addLog("Nouvel onglet de travail Neptune créé.");
+
     const response = await apiFetch("/v1/missions", {
       method: "POST",
       body: JSON.stringify({
         goal,
         deviceId: config.deviceId,
-        context: active.tab?.url ? { activeUrl: active.tab.url } : {}
+        context: sourceUrl && /^https?:\/\//i.test(sourceUrl) ? { activeUrl: sourceUrl } : {}
       })
     });
     mission = await parseJson<Mission>(response);
@@ -131,6 +269,10 @@ async function createMission(): Promise<void> {
   } finally {
     setBusy(false);
   }
+}
+
+function shouldCloneActivePage(goal: string): boolean {
+  return /\b(cette page|page active|page actuelle|ce site|site actuel|ici)\b/i.test(goal);
 }
 
 async function approveMission(approved: boolean): Promise<void> {
