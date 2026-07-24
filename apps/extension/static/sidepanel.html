@@ -3,77 +3,75 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Neptune Agent</title>
+  <title>Neptune — Compagnon navigateur</title>
   <link rel="stylesheet" href="sidepanel.css" />
 </head>
 <body>
   <main class="app-shell">
-    <header class="hero">
-      <div class="brand-mark">N</div>
-      <div>
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">N</div>
+      <div class="brand-copy">
         <p class="eyebrow">NEPTUNE</p>
-        <h1>Agent Web</h1>
+        <h1>Compagnon navigateur</h1>
       </div>
-      <span id="connection-status" class="status status-offline">Hors ligne</span>
+      <span id="companion-status" class="status status-checking">Initialisation</span>
     </header>
 
-    <section class="card config-card">
-      <button id="toggle-config" class="link-button" type="button">Configuration</button>
-      <div id="config-panel" class="config-panel hidden">
-        <label>
-          URL du moteur Cloudflare
-          <input id="api-url" type="url" placeholder="http://127.0.0.1:8787" />
-        </label>
-        <label>
-          Jeton API
-          <input id="api-token" type="password" autocomplete="off" placeholder="Jeton de test" />
-        </label>
-        <button id="save-config" class="secondary-button" type="button">Enregistrer</button>
+    <section id="onboarding-view" class="experience-card onboarding-view">
+      <div id="progress" class="progress" aria-label="Progression de l’installation"></div>
+      <div class="orb-stage" aria-hidden="true">
+        <div class="orb-halo halo-one"></div>
+        <div class="orb-halo halo-two"></div>
+        <div class="orb-ring ring-one"></div>
+        <div class="orb-ring ring-two"></div>
+        <div class="orb-core">N</div>
       </div>
+      <div id="step-content" class="step-content"></div>
+      <footer class="onboarding-actions">
+        <button id="back-step" class="ghost-button" type="button">Retour</button>
+        <button id="next-step" class="primary-button" type="button">Continuer</button>
+      </footer>
     </section>
 
-    <section class="card mission-card">
-      <div class="mission-heading">
-        <label for="goal">Mission</label>
-        <button id="voice-input" class="voice-button" type="button" aria-pressed="false" title="Dicter la mission">
-          <span aria-hidden="true">🎙</span>
-          <span id="voice-label">Dicter</span>
-        </button>
-      </div>
-      <p id="voice-status" class="voice-status" aria-live="polite"></p>
-      <textarea id="goal" rows="5" placeholder="Ex. Ouvre Le Bon Coin et cherche des bureaux à Toulouse."></textarea>
-      <p class="work-tab-note">Chaque mission s’exécute dans un nouvel onglet de travail Neptune.</p>
-      <div class="button-row">
-        <button id="create-mission" class="primary-button" type="button">Préparer la mission</button>
-        <button id="stop-mission" class="danger-button" type="button" disabled>Arrêter</button>
-      </div>
-    </section>
+    <section id="companion-view" class="companion-view hidden">
+      <section class="experience-card ready-card">
+        <div class="compact-orb" aria-hidden="true"><span>N</span></div>
+        <div>
+          <p class="eyebrow">BRAS NAVIGATEUR</p>
+          <h2>Neptune est prêt à agir</h2>
+          <p>Donnez vos instructions dans l’application Neptune. Cette extension ouvre un onglet de travail séparé et exécute uniquement les actions autorisées.</p>
+        </div>
+      </section>
 
-    <section id="approval-card" class="card approval-card hidden" aria-live="polite">
-      <p class="eyebrow">VALIDATION REQUISE</p>
-      <h2>Action sensible détectée</h2>
-      <p id="approval-summary"></p>
-      <div class="button-row">
-        <button id="approve" class="primary-button" type="button">Autoriser cette mission</button>
-        <button id="deny" class="secondary-button" type="button">Refuser</button>
-      </div>
-    </section>
+      <section class="status-grid" aria-live="polite">
+        <article class="status-card">
+          <span class="status-icon online"></span>
+          <div><strong>Extension</strong><small id="extension-detail">Vérification…</small></div>
+        </article>
+        <article class="status-card">
+          <span class="status-icon neutral"></span>
+          <div><strong>Application Neptune</strong><small>Doit rester ouverte pendant les missions</small></div>
+        </article>
+      </section>
 
-    <section class="card">
-      <div class="section-heading">
-        <h2>Plan d’action</h2>
-        <span id="mission-status" class="muted">Aucune mission</span>
-      </div>
-      <ol id="action-list" class="action-list"></ol>
-      <button id="run-mission" class="primary-button full-width" type="button" disabled>Exécuter les actions autorisées</button>
-    </section>
+      <section class="experience-card instructions-card">
+        <p class="eyebrow">COMMENT L’UTILISER</p>
+        <ol>
+          <li>Ouvrez l’application Neptune.</li>
+          <li>Dites ou écrivez votre objectif.</li>
+          <li>Neptune travaille dans un nouvel onglet et vous demande confirmation si nécessaire.</li>
+        </ol>
+      </section>
 
-    <section class="card log-card">
-      <div class="section-heading">
-        <h2>Journal</h2>
-        <button id="clear-log" class="link-button" type="button">Effacer</button>
+      <section class="safety-card">
+        <strong>Limites permanentes</strong>
+        <p>Paiements, suppressions, signatures, mots de passe et engagements contractuels restent soumis à votre confirmation explicite.</p>
+      </section>
+
+      <div class="companion-actions">
+        <button id="check-extension" class="primary-button" type="button">Vérifier la connexion</button>
+        <button id="restart-onboarding" class="ghost-button" type="button">Revoir l’installation</button>
       </div>
-      <div id="log" class="log" aria-live="polite"></div>
     </section>
   </main>
   <script type="module" src="sidepanel.js"></script>

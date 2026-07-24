@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Neptune Agent Web",
+  "name": "Neptune — Compagnon navigateur",
   "short_name": "Neptune",
-  "version": "0.4.0",
-  "description": "Bras navigateur de Neptune Runtime avec onglet de travail dédié et validation humaine.",
+  "version": "0.4.1",
+  "description": "Compagnon navigateur de Neptune Runtime avec onglet de travail dédié et validation humaine.",
   "minimum_chrome_version": "114",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8aMcGOx/IT2nMVJlMpbtEDmWi3NwTu0Aw5qgxxBOffzwi+H7Fx27J6QrHmS9G0rOYphUWvwD0NV8FkcGUZ7RnTfw1lqS2SmwiQT/9kMVKgUoN6vgVq9M2/2/sYV85SOD6UIHrQzijBdLktYSlg+T6qLXuogW1tMHWvRRPhy/GuKDZ++7i0+5cwdfHSejol30pvQphQ6lLrE9bqU0S9+/niuckt2JN63tO35cehzxcp7hCgqG4iLB2xOp218aD+Pz/N3ZFfynBJPgSmKQtgafDFNKABbj4ayo8koi1nVLhIyzSb4WKCVei/PZQB6isrpL6RbkHVgFwYL7/CgCcYA6ZwIDAQAB",
   "permissions": [
@@ -23,7 +23,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Ouvrir Neptune Agent"
+    "default_title": "Ouvrir le compagnon Neptune"
   },
   "side_panel": {
     "default_path": "sidepanel.html"
