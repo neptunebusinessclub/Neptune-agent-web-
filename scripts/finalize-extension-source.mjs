@@ -39,11 +39,5 @@ replaceRequired(
   `  return ([\n    ["prudent", "Prudent", "Je demande avant toute écriture, publication ou communication externe."],\n    ["assisted", "Collaborateur", "Une autorisation peut couvrir une mission clairement définie."],\n    ["controlled", "Autonome contrôlé", "J’agis dans les règles et quotas approuvés, sans toucher aux actions sensibles."]\n  ] as const).map(([id, title, description]) => choiceButton("select-trust", id, title, description, preferences.trustLevel === id)).join("");`
 );
 
-replaceRequired(
-  ".github/workflows/ci.yml",
-  `\n      - name: Upload source diagnostic snapshot\n        if: github.event_name == 'pull_request'\n        uses: actions/upload-artifact@v4\n        with:\n          name: extension-source-diagnostic\n          path: apps/extension/src\n          retention-days: 1\n`,
-  "\n"
-);
-
 rmSync("scripts/finalize-extension-source.mjs");
-rmSync(".github/workflows/source-finalizer.yml");
+rmSync(".github/workflows/source-finalizer.yml", { force: true });
