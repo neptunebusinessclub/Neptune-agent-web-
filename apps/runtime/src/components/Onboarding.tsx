@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getNativeBridgeStatus, registerBrowserExtensionHost } from "../lib/browser";
 import type { IntelligenceProvider, NativeBridgeStatus, TrustLevel, UserPreferences, VoiceOption } from "../types";
 
 const TRUST_LEVELS: Array<{ id: TrustLevel; title: string; description: string }> = [
@@ -20,31 +21,43 @@ const TRUST_LEVELS: Array<{ id: TrustLevel; title: string; description: string }
 ];
 
 const STEP_COUNT = 6;
+const EMPTY_BRIDGE: NativeBridgeStatus = { connected: false, hostRegistered: false, extensionId: "" };
 
 export function Onboarding({
   voices,
   providers,
-  bridge,
   initial,
   onComplete,
-  onPreviewVoice,
-  onReconnectBrowser
+  onPreviewVoice
 }: {
   voices: VoiceOption[];
   providers: IntelligenceProvider[];
-  bridge: NativeBridgeStatus;
   initial: UserPreferences;
   onComplete: (preferences: UserPreferences) => void;
   onPreviewVoice: (voiceId: string) => void;
-  onReconnectBrowser: () => Promise<void>;
 }) {
   const [step, setStep] = useState(0);
   const [preferences, setPreferences] = useState(initial);
+  const [bridge, setBridge] = useState<NativeBridgeStatus>(EMPTY_BRIDGE);
   const [checkingBrowser, setCheckingBrowser] = useState(false);
   const availableProviders = useMemo(
     () => providers.filter((provider) => provider.status === "available" || provider.kind === "cloud"),
     [providers]
   );
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      const status = await getNativeBridgeStatus();
+      if (active) setBridge(status);
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 3_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const canContinue =
     (step === 0 && preferences.preferredName.trim().length >= 2)
@@ -68,10 +81,12 @@ export function Onboarding({
   async function reconnectBrowser() {
     setCheckingBrowser(true);
     try {
-      await onReconnectBrowser();
-    } finally {
-      setCheckingBrowser(false);
+      await registerBrowserExtensionHost();
+    } catch {
+      // The host may already be registered; the status check below is authoritative.
     }
+    setBridge(await getNativeBridgeStatus());
+    setCheckingBrowser(false);
   }
 
   return (
