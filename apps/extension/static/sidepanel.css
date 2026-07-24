@@ -1,0 +1,61 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #090b14;
+  color: #f7f7fb;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: radial-gradient(circle at top right, rgba(132, 72, 255, .18), transparent 34%), #090b14; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+
+.app-shell { display: grid; gap: 12px; padding: 16px; }
+.hero { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 10px; padding: 4px 2px 10px; }
+.brand-mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; font-weight: 900; font-size: 22px; background: linear-gradient(135deg, #28a9ff, #8d4cff 55%, #ff4da6); box-shadow: 0 8px 28px rgba(112, 81, 255, .32); }
+h1, h2, p { margin: 0; }
+h1 { font-size: 18px; }
+h2 { font-size: 14px; }
+.eyebrow { color: #9fa7bd; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+.muted { color: #8e96aa; font-size: 11px; }
+
+.card { border: 1px solid rgba(255,255,255,.08); border-radius: 16px; padding: 14px; background: rgba(18, 21, 35, .88); box-shadow: 0 12px 34px rgba(0,0,0,.18); }
+label { display: grid; gap: 7px; color: #c8ccda; font-size: 12px; font-weight: 700; }
+textarea, input { width: 100%; border: 1px solid rgba(255,255,255,.12); border-radius: 11px; padding: 11px 12px; outline: none; background: #0d1020; color: #fff; }
+textarea { margin-top: 8px; resize: vertical; min-height: 110px; line-height: 1.45; }
+textarea:focus, input:focus { border-color: #8c5cff; box-shadow: 0 0 0 3px rgba(140, 92, 255, .14); }
+
+.button-row { display: flex; gap: 8px; margin-top: 12px; }
+.primary-button, .secondary-button, .danger-button { border: 0; border-radius: 10px; padding: 10px 12px; font-weight: 800; }
+.primary-button { background: linear-gradient(135deg, #1ca6ff, #8057ff 58%, #ff4da0); color: white; }
+.secondary-button { background: #24283a; color: #eff1f8; }
+.danger-button { background: rgba(255, 78, 107, .14); color: #ff8da1; }
+.full-width { width: 100%; margin-top: 12px; }
+.link-button { border: 0; padding: 0; background: transparent; color: #a99bff; font-weight: 750; }
+
+.config-card { padding-block: 11px; }
+.config-panel { display: grid; gap: 10px; margin-top: 12px; }
+.hidden { display: none !important; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.status { border-radius: 999px; padding: 5px 8px; font-size: 10px; font-weight: 800; }
+.status-online { color: #7ff0bf; background: rgba(50, 211, 148, .12); }
+.status-offline { color: #ff9aad; background: rgba(255, 77, 111, .12); }
+
+.approval-card { border-color: rgba(255, 187, 73, .35); background: linear-gradient(160deg, rgba(75, 52, 14, .75), rgba(24, 22, 28, .95)); }
+.approval-card h2 { margin-top: 5px; font-size: 16px; }
+.approval-card > p:not(.eyebrow) { margin-top: 8px; color: #d9d2c5; font-size: 12px; line-height: 1.5; }
+
+.action-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.action-item { display: grid; grid-template-columns: 22px 1fr auto; gap: 9px; align-items: start; padding: 10px; border-radius: 11px; background: rgba(255,255,255,.035); }
+.action-index { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: rgba(122, 91, 255, .18); color: #c7bdff; font-size: 11px; font-weight: 900; }
+.action-label { font-size: 12px; line-height: 1.4; }
+.action-meta { margin-top: 4px; color: #8c93a8; font-size: 10px; text-transform: uppercase; }
+.action-state { color: #a5acc0; font-size: 10px; }
+.action-state.completed { color: #60deb0; }
+.action-state.failed, .action-state.blocked { color: #ff8097; }
+.action-state.running { color: #81c6ff; }
+
+.log { display: grid; gap: 7px; max-height: 190px; overflow: auto; }
+.log-entry { border-left: 2px solid rgba(126, 97, 255, .7); padding-left: 8px; color: #c4c8d5; font-size: 11px; line-height: 1.4; }
+.log-time { display: block; margin-bottom: 2px; color: #747d94; font-size: 9px; }
