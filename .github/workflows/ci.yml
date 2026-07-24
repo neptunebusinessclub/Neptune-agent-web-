@@ -57,7 +57,29 @@ jobs:
         run: exit 1
 
       - name: Tests
-        run: pnpm test
+        id: tests
+        continue-on-error: true
+        shell: bash
+        run: pnpm test 2>&1 | tee tests.log
+
+      - name: Publish test diagnostics
+        if: steps.tests.outcome == 'failure' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo '### CI — erreurs de tests'
+            echo
+            echo '```text'
+            tail -n 120 tests.log
+            echo '```'
+          } > tests-comment.md
+          gh pr comment "$PR_NUMBER" --body-file tests-comment.md
+
+      - name: Enforce test result
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
 
       - name: Build extension
         run: pnpm --filter @neptune/extension build
