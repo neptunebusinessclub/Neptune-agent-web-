@@ -13,12 +13,21 @@ type ExtensionRequest =
   | { type: "GET_WORK_TAB" }
   | { type: "STOP_MISSION" };
 
+type NativeRequest = ExtensionRequest & { requestId?: string };
+
 const WORK_TAB_STORAGE_KEY = "neptuneWorkTabId";
+const NATIVE_HOST = "club.neptune.runtime";
 let stopped = false;
+let nativePort: chrome.runtime.Port | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  connectNativeBridge();
 });
+
+chrome.runtime.onStartup.addListener(connectNativeBridge);
+connectNativeBridge();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void clearWorkTabIfMatches(tabId);
@@ -32,6 +41,79 @@ chrome.runtime.onMessage.addListener((request: ExtensionRequest, _sender, sendRe
     });
   return true;
 });
+
+function connectNativeBridge(): void {
+  if (nativePort) return;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  try {
+    const port = chrome.runtime.connectNative(NATIVE_HOST);
+    nativePort = port;
+    port.onMessage.addListener((message: NativeRequest) => {
+      void handleNativeRequest(message);
+    });
+    port.onDisconnect.addListener(() => {
+      nativePort = null;
+      scheduleReconnect();
+    });
+    port.postMessage({
+      event: "EXTENSION_READY",
+      extensionId: chrome.runtime.id,
+      version: chrome.runtime.getManifest().version
+    });
+  } catch {
+    nativePort = null;
+    scheduleReconnect();
+  }
+}
+
+function scheduleReconnect(): void {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectNativeBridge();
+  }, 3_000);
+}
+
+async function handleNativeRequest(message: NativeRequest): Promise<void> {
+  const requestId = message.requestId;
+  try {
+    const result = await handleRequest(message);
+    nativePort?.postMessage({ requestId, ok: true, result });
+  } catch (error) {
+    nativePort?.postMessage({
+      requestId,
+      ok: false,
+      error: classifyBrowserError(error)
+    });
+  }
+}
+
+function classifyBrowserError(error: unknown): {
+  code: string;
+  message: string;
+  requiresHuman: boolean;
+  retryable: boolean;
+} {
+  const message = error instanceof Error ? error.message : "Erreur navigateur inconnue";
+  const normalized = message.toLocaleLowerCase("fr-FR");
+  if (normalized.includes("platform_guard_detected") || normalized.includes("captcha")) {
+    return { code: "HUMAN_VERIFICATION", message, requiresHuman: true, retryable: true };
+  }
+  if (normalized.includes("connexion") || normalized.includes("connecté") || normalized.includes("login")) {
+    return { code: "AUTHENTICATION_REQUIRED", message, requiresHuman: true, retryable: true };
+  }
+  if (normalized.includes("permission") || normalized.includes("cannot access contents")) {
+    return { code: "PAGE_PERMISSION", message, requiresHuman: false, retryable: true };
+  }
+  if (normalized.includes("target not found") || normalized.includes("cible")) {
+    return { code: "TARGET_NOT_FOUND", message, requiresHuman: false, retryable: true };
+  }
+  return { code: "BROWSER_ACTION_FAILED", message, requiresHuman: false, retryable: true };
+}
 
 async function handleRequest(request: ExtensionRequest): Promise<unknown> {
   if (request.type === "GET_ACTIVE_TAB") {
@@ -55,10 +137,8 @@ async function handleRequest(request: ExtensionRequest): Promise<unknown> {
     return { ok: true };
   }
 
-  stopped = false;
   const { action, approved } = request;
   enforcePolicy(action, approved);
-
   if (stopped) throw new Error("Mission stopped");
 
   switch (action.type) {
