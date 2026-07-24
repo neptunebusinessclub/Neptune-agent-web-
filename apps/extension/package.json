@@ -7,7 +7,7 @@
     "dev": "node esbuild.mjs --watch",
     "build": "node esbuild.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@neptune/protocol": "workspace:*"
