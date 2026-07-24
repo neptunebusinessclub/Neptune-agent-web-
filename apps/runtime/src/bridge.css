@@ -1,0 +1,38 @@
+.runtime-connections { margin-top: auto; display: grid; gap: 8px; }
+.runtime-connections .sidebar-status { margin-top: 0; }
+
+.intervention-card {
+  margin: 0 0 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(13, 17, 39, .92);
+  box-shadow: 0 18px 46px rgba(0,0,0,.24);
+}
+.intervention-card strong { display: block; margin-bottom: 5px; font-size: 13px; }
+.intervention-card p { margin: 0; color: #cbd3e9; font-size: 12px; line-height: 1.45; }
+.intervention-card > div { display: flex; gap: 8px; margin-top: 12px; }
+.permission-card { border-color: rgba(255, 91, 186, .38); background: linear-gradient(145deg, rgba(73, 20, 62, .84), rgba(17, 19, 39, .92)); }
+.blocked-card { border-color: rgba(255, 175, 80, .36); background: linear-gradient(145deg, rgba(72, 46, 15, .82), rgba(17, 19, 39, .92)); }
+
+.runtime-action-list { display: grid; gap: 8px; margin: 18px 0 0; padding: 0; list-style: none; }
+.runtime-action-list li { display: grid; grid-template-columns: 25px 1fr; gap: 9px; align-items: center; padding: 10px; border-radius: 12px; background: rgba(255,255,255,.045); }
+.runtime-action-list li > span { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 8px; color: #c8d4f8; background: rgba(74, 101, 255, .18); font-size: 10px; font-weight: 900; }
+.runtime-action-list strong, .runtime-action-list small { display: block; }
+.runtime-action-list strong { font-size: 11px; }
+.runtime-action-list small { margin-top: 3px; color: #818ca8; font-size: 9px; text-transform: uppercase; }
+.runtime-action-list li.completed { border: 1px solid rgba(75, 220, 164, .2); }
+.runtime-action-list li.running { border: 1px solid rgba(76, 159, 255, .32); }
+.runtime-action-list li.failed, .runtime-action-list li.blocked { border: 1px solid rgba(255, 103, 130, .28); }
+
+.model-install-grid { display: grid; gap: 8px; margin-top: 12px; }
+.model-install-grid button { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 13px; padding: 11px 12px; text-align: left; color: #eaf0ff; background: rgba(255,255,255,.045); }
+.model-install-grid button strong { font-size: 11px; }
+.model-install-grid button small { grid-column: 1; color: #7f8ba8; font-size: 9px; }
+.model-install-grid button span { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: #8fb7ff; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.model-install-grid button:disabled span { color: #6b748c; }
+
+@media (max-width: 1080px) {
+  .topbar { align-items: flex-start; }
+  .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+}
