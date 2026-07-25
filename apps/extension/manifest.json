@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "Neptune — Assistant navigateur",
   "short_name": "Neptune",
-  "version": "1.2.0",
-  "version_name": "1.2 Multi-LLM",
-  "description": "Assistant navigateur agentique et vocal avec modèles locaux installables ou intelligences cloud.",
+  "version": "1.3.0",
+  "version_name": "1.3 Voice",
+  "description": "Assistant navigateur agentique avec modèles locaux et voix françaises open source installables.",
   "minimum_chrome_version": "138",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8aMcGOx/IT2nMVJlMpbtEDmWi3NwTu0Aw5qgxxBOffzwi+H7Fx27J6QrHmS9G0rOYphUWvwD0NV8FkcGUZ7RnTfw1lqS2SmwiQT/9kMVKgUoN6vgVq9M2/2/sYV85SOD6UIHrQzijBdLktYSlg+T6qLXuogW1tMHWvRRPhy/GuKDZ++7i0+5cwdfHSejol30pvQphQ6lLrE9bqU0S9+/niuckt2JN63tO35cehzxcp7hCgqG4iLB2xOp218aD+Pz/N3ZFfynBJPgSmKQtgafDFNKABbj4ayo8koi1nVLhIyzSb4WKCVei/PZQB6isrpL6RbkHVgFwYL7/CgCcYA6ZwIDAQAB",
   "icons": {
