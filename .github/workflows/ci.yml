@@ -13,7 +13,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
             echo '### CI — erreurs TypeScript'
             echo
             echo '```text'
-            tail -n 180 typecheck.log
+            tail -n 220 typecheck.log
             echo '```'
           } > typecheck-comment.md
           gh pr comment "$PR_NUMBER" --body-file typecheck-comment.md
@@ -72,7 +72,7 @@ jobs:
             echo '### CI — erreurs de tests'
             echo
             echo '```text'
-            tail -n 180 tests.log
+            tail -n 220 tests.log
             echo '```'
           } > tests-comment.md
           gh pr comment "$PR_NUMBER" --body-file tests-comment.md
@@ -97,7 +97,7 @@ jobs:
             echo '### CI — erreur du bundle Chrome'
             echo
             echo '```text'
-            tail -n 220 build.log
+            tail -n 260 build.log
             echo '```'
           } > build-comment.md
           gh pr comment "$PR_NUMBER" --body-file build-comment.md
@@ -106,10 +106,10 @@ jobs:
         if: steps.build.outcome == 'failure'
         run: exit 1
 
-      - name: Validate manifest, local AI, voice and background wake package
+      - name: Validate Neptune 1.5 package
         shell: bash
         run: |
-          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.4.0'||!m.permissions?.includes('offscreen')||m.permissions?.includes('nativeMessaging')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.5.0'||!m.permissions?.includes('offscreen')||m.permissions?.includes('nativeMessaging')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
           test -f apps/extension/dist/sidepanel.html
           test -f apps/extension/dist/sidepanel.js
           test -f apps/extension/dist/offscreen.html
@@ -119,22 +119,29 @@ jobs:
           test -f apps/extension/dist/service-worker.js
           test -f apps/extension/dist/content-script.js
           test -f apps/extension/dist/privacy.html
-          test -f apps/extension/dist/icons/icon-16.png
-          test -f apps/extension/dist/icons/icon-32.png
-          test -f apps/extension/dist/icons/icon-48.png
-          test -f apps/extension/dist/icons/icon-128.png
-          test -f apps/extension/src/agent-core.ts
-          test -f apps/extension/src/agent-intelligence.ts
-          test -f apps/extension/src/local-model-runtime.ts
-          test -f apps/extension/src/local-voice-runtime.ts
-          test -f apps/extension/src/background-wake-recognition.ts
-          grep -q "planAgentStep" apps/extension/src/agentic-sidepanel.ts
-          grep -q "MAX_AGENT_CYCLES" apps/extension/src/agent-core.ts
-          grep -q "CreateWebWorkerMLCEngine" apps/extension/src/local-model-runtime.ts
-          grep -q "piper-tts-web" apps/extension/src/piper-voice-worker.ts
+          test -f apps/extension/dist/voices/fr_FR-siwis-medium.onnx
+          test -f apps/extension/dist/voices/fr_FR-siwis-medium.onnx.json
+          test -f apps/extension/dist/voices/fr_FR-tom-medium.onnx
+          test -f apps/extension/dist/voices/fr_FR-tom-medium.onnx.json
+          test -f apps/extension/src/neptune-app.ts
+          test -f apps/extension/src/product-config.ts
+          grep -q "planAgentStep" apps/extension/src/neptune-app.ts
+          grep -q "current-tab" apps/extension/src/service-worker.ts
+          grep -q "new-window" apps/extension/src/service-worker.ts
+          grep -q "Qwen2.5-1.5B" apps/extension/src/product-config.ts
+          grep -q "fr_FR-siwis-medium" apps/extension/src/piper-voice-worker.ts
+          grep -q "fr_FR-tom-medium" apps/extension/src/piper-voice-worker.ts
           grep -q "USER_MEDIA" apps/extension/src/service-worker.ts
           grep -q "BACKGROUND_WAKE_TRANSCRIPT" apps/extension/src/offscreen-wake.ts
-          if grep -R -n -E "Neptune Runtime|127\.0\.0\.1:8787|Jeton API Neptune|nativeMessaging" apps/extension/dist --exclude='*.map'; then
+          if grep -q "voice-hub-overlay\|model-hub-overlay\|agentic-sidepanel" apps/extension/src/sidepanel-entry.ts; then
+            echo "Legacy UI overlays are still loaded."
+            exit 1
+          fi
+          if find apps/extension/dist -name '*.map' -print -quit | grep -q .; then
+            echo "Source maps must not ship in the production package."
+            exit 1
+          fi
+          if grep -R -n -E "Neptune Runtime|127\.0\.0\.1:8787|Jeton API Neptune|nativeMessaging" apps/extension/dist; then
             echo "A production-forbidden Runtime dependency was found in the extension package."
             exit 1
           fi
@@ -146,12 +153,12 @@ jobs:
         shell: bash
         run: |
           cd apps/extension/dist
-          zip -r ../../../neptune-extension-wake-v1.4.0.zip .
+          zip -r ../../../neptune-extension-experience-v1.5.0.zip .
 
       - name: Publish production extension
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-extension-wake-v1.4.0
-          path: neptune-extension-wake-v1.4.0.zip
+          name: neptune-extension-experience-v1.5.0
+          path: neptune-extension-experience-v1.5.0.zip
           if-no-files-found: error
           retention-days: 90
