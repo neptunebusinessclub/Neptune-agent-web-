@@ -10,40 +10,41 @@
 </head>
 <body>
   <h1>Politique de confidentialité de Neptune</h1>
-  <p>Version du 25 juillet 2026.</p>
-  <p class="note">Neptune est conçu pour minimiser les données transmises. Les préférences, l’historique local, le journal des missions, les modèles d’intelligence et de voix sélectionnés ainsi que les clés fournisseur restent dans le profil Chrome de l’utilisateur, sauf lorsqu’une requête doit être envoyée au fournisseur cloud choisi par l’utilisateur.</p>
+  <p>Version du 25 juillet 2026 — Neptune 1.5.</p>
+  <p class="note">Neptune minimise les données transmises. Les préférences, l’historique, le journal des missions, les modèles locaux sélectionnés et les clés fournisseur restent dans le profil Chrome de l’utilisateur, sauf lorsqu’une requête doit être envoyée au fournisseur cloud choisi.</p>
 
   <h2>Données conservées localement</h2>
   <ul>
-    <li>prénom d’usage, voix, niveau de confiance et mot d’activation ;</li>
+    <li>prénom d’usage, voix choisie, niveau de contrôle et activation vocale ;</li>
     <li>historique conversationnel et journal des missions ;</li>
     <li>configuration du fournisseur d’intelligence ;</li>
-    <li>sélection des modèles locaux et état de leur téléchargement ;</li>
-    <li>poids et fichiers techniques des modèles WebLLM dans le cache local IndexedDB de Chrome ;</li>
-    <li>poids et fichiers techniques des voix Piper dans le stockage local géré par Chrome ;</li>
+    <li>sélection et cache du modèle d’intelligence local ;</li>
     <li>clés API chiffrées localement avec AES-GCM.</li>
   </ul>
 
-  <h2>Intelligence locale</h2>
-  <p>Lorsque l’intelligence intégrée de Chrome ou un modèle Neptune Local WebLLM est utilisé, les instructions, le contexte de page et les réponses sont traités sur l’ordinateur. Les poids des modèles sont téléchargés depuis les emplacements déclarés par le catalogue WebLLM, puis conservés localement par Chrome. Ces téléchargements contiennent le modèle et ses fichiers d’exécution, pas les conversations de l’utilisateur.</p>
+  <h2>Voix françaises intégrées</h2>
+  <p>Les deux modèles vocaux français proposés pendant l’accueil — une voix féminine et une voix masculine — ainsi que Piper et les fichiers WebAssembly nécessaires sont inclus dans le package de l’extension. Neptune ne télécharge pas une voix lors du premier lancement et n’utilise pas la voix Windows par défaut pour ses réponses.</p>
+  <p>Le texte est transformé en audio directement dans l’extension, dans un Web Worker séparé. Neptune n’envoie ni le texte à prononcer ni l’audio généré à un service distant de synthèse vocale.</p>
 
-  <h2>Synthèse vocale locale</h2>
-  <p>Lorsqu’une voix Neptune Local est choisie, le modèle vocal Piper correspondant est téléchargé après une action explicite de l’utilisateur. Le texte à prononcer est transformé en audio directement dans l’extension, dans un Web Worker séparé. Le texte et l’audio généré ne sont pas envoyés à un service de synthèse vocale distant par Neptune.</p>
-  <p>Les voix du système ou de Chrome restent disponibles comme alternatives. Leur traitement dépend alors des mécanismes propres au navigateur et au système d’exploitation.</p>
+  <h2>Intelligence locale</h2>
+  <p>Neptune Équilibré est sélectionné comme moteur local par défaut. Lors de sa première préparation, les poids du modèle WebLLM sont téléchargés depuis leur emplacement de distribution puis conservés dans le cache local IndexedDB de Chrome. Ces fichiers contiennent le modèle et son runtime, pas les conversations de l’utilisateur.</p>
+  <p>Lorsque l’intelligence intégrée de Chrome ou un modèle WebLLM local est utilisé, les instructions, le contexte utile de la page et les réponses sont traités sur l’ordinateur.</p>
+
+  <h2>Activation vocale</h2>
+  <p>Après autorisation du microphone, Neptune peut écouter les expressions « Neptune » et « OK Neptune » lorsque Chrome reste ouvert. Un document d’extension hors écran maintient cette écoute. Les transcriptions nécessaires à la commande sont traitées par les mécanismes de reconnaissance vocale disponibles dans Chrome.</p>
 
   <h2>Données transmises</h2>
-  <p>Lorsqu’un fournisseur cloud est choisi, les messages nécessaires à la réponse ou à la planification sont envoyés directement à ce fournisseur selon ses propres conditions. Neptune n’envoie jamais une clé API à un autre fournisseur que celui configuré.</p>
-  <p>Pour accomplir une mission navigateur, Neptune lit uniquement les pages ouvertes dans son onglet de travail et ne transmet au moteur d’intelligence que le contexte nécessaire à l’objectif demandé.</p>
-  <p>Le téléchargement initial d’un modèle local ou d’une voix locale contacte uniquement l’emplacement de distribution nécessaire à ce modèle. Les conversations et le contenu des pages ne font pas partie de ces téléchargements.</p>
+  <p>Lorsqu’un fournisseur cloud est choisi dans les paramètres avancés, les messages nécessaires à la réponse ou à la planification sont envoyés directement à ce fournisseur selon ses propres conditions. Neptune n’envoie jamais une clé API à un autre fournisseur que celui configuré.</p>
+  <p>Pour accomplir une mission navigateur, Neptune lit uniquement la page définie comme espace de travail et ne fournit au moteur d’intelligence que le contexte nécessaire à l’objectif demandé.</p>
 
   <h2>Permissions navigateur</h2>
-  <p>L’accès aux sites est demandé pendant l’onboarding. Il sert à lire et manipuler les pages dans l’onglet de travail Neptune. L’extension ne revend ni ne contourne les protections de sécurité des plateformes.</p>
+  <p>L’accès aux sites est demandé avant la première mission nécessitant de lire ou manipuler une page. Selon la décision de l’utilisateur, Neptune peut travailler dans la page actuelle, un nouvel onglet ou une nouvelle fenêtre. L’extension ne contourne pas les protections de sécurité des plateformes.</p>
 
   <h2>Actions sensibles</h2>
-  <p>Neptune refuse d’automatiser les paiements, achats, suppressions de compte, mots de passe, signatures, virements et contournements de CAPTCHA. Les communications externes exigent une autorisation explicite selon le niveau de confiance configuré.</p>
+  <p>Neptune refuse d’automatiser les paiements, achats, suppressions de compte, mots de passe, codes secrets, signatures, virements et contournements de CAPTCHA. Les communications externes exigent une autorisation explicite.</p>
 
   <h2>Suppression des données</h2>
-  <p>L’utilisateur peut effacer la conversation et le journal depuis les réglages. Les modèles d’intelligence et les voix locales peuvent être supprimés en effaçant les données de stockage de l’extension dans Chrome. La désinstallation supprime les données associées au profil Chrome, sous réserve des mécanismes de sauvegarde propres au navigateur.</p>
+  <p>L’utilisateur peut effacer la conversation et le journal depuis les réglages. Le cache du modèle local peut être supprimé en effaçant les données de stockage de l’extension dans Chrome. La désinstallation supprime les données associées au profil Chrome, sous réserve des mécanismes de sauvegarde propres au navigateur.</p>
 
   <h2>Contact</h2>
   <p>Responsable du produit : Neptune Business Club. Les coordonnées de contact et la version publique de cette politique doivent être renseignées sur la fiche Chrome Web Store avant publication.</p>
