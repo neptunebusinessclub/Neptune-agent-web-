@@ -58,7 +58,9 @@ const STORAGE_SELECTION = "neptune.local-model.selection.v1";
 const STORAGE_READY = "neptune.local-model.ready.v1";
 const DEFAULT_MODEL_ID = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
 
-const nativeLanguageModel = (window as Window & { LanguageModel?: LocalLanguageModelApi }).LanguageModel;
+const browserWindow = typeof window !== "undefined" ? window : undefined;
+const browserNavigator = typeof navigator !== "undefined" ? navigator : undefined;
+const nativeLanguageModel = (browserWindow as (Window & { LanguageModel?: LocalLanguageModelApi }) | undefined)?.LanguageModel;
 let webLlmEngine: WebLlmEngine | null = null;
 let webLlmWorker: Worker | null = null;
 let activeWebLlmModel = "";
@@ -109,7 +111,7 @@ const FRIENDLY_MODELS: Array<{
 ];
 
 export function isWebGpuAvailable(): boolean {
-  return Boolean((navigator as Navigator & { gpu?: unknown }).gpu);
+  return Boolean((browserNavigator as (Navigator & { gpu?: unknown }) | undefined)?.gpu);
 }
 
 export function getLocalModelCatalog(): LocalModelCard[] {
@@ -153,7 +155,7 @@ export function getLocalModelCatalog(): LocalModelCard[] {
 }
 
 export function recommendModelId(catalog = getLocalModelCatalog()): string {
-  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  const memory = (browserNavigator as (Navigator & { deviceMemory?: number }) | undefined)?.deviceMemory ?? 8;
   const preferredTiers: LocalModelCard["tier"][] = memory <= 4
     ? ["light", "fast", "balanced", "advanced", "expert"]
     : memory <= 8
@@ -184,7 +186,7 @@ export async function saveLocalModelSelection(selection: LocalModelSelection): P
   const previous = await getLocalModelSelection();
   if (previous.engine !== selection.engine || previous.modelId !== selection.modelId) await releaseLocalModel();
   await chrome.storage.local.set({ [STORAGE_SELECTION]: selection });
-  window.dispatchEvent(new CustomEvent("neptune-local-model-selection", { detail: selection }));
+  browserWindow?.dispatchEvent(new CustomEvent("neptune-local-model-selection", { detail: selection }));
 }
 
 export function getLocalLanguageModelApi(): LocalLanguageModelApi | undefined {
@@ -313,7 +315,7 @@ async function createWebLlmSession(
 }
 
 function dispatchProgress(modelId: string, progress: number, text: string): void {
-  window.dispatchEvent(new CustomEvent("neptune-local-model-progress", {
+  browserWindow?.dispatchEvent(new CustomEvent("neptune-local-model-progress", {
     detail: { modelId, progress, text }
   }));
 }
