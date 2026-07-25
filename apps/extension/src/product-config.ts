@@ -1,7 +1,6 @@
-import { toLocalVoiceUri } from "./local-voice-runtime";
-
 export const PRODUCT_VERSION = 15;
 export const BALANCED_LOCAL_MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
+export const LOCAL_VOICE_PREFIX = "neptune-piper:";
 
 export type VoiceGender = "female" | "male";
 export type WorkspaceMode = "current-tab" | "new-tab" | "new-window";
@@ -10,14 +9,14 @@ export const PRODUCT_VOICES = {
   female: {
     gender: "female" as const,
     id: "fr_FR-siwis-medium",
-    uri: toLocalVoiceUri("fr_FR-siwis-medium"),
+    uri: `${LOCAL_VOICE_PREFIX}fr_FR-siwis-medium`,
     label: "Voix féminine",
     description: "Naturelle, claire et chaleureuse"
   },
   male: {
     gender: "male" as const,
     id: "fr_FR-tom-medium",
-    uri: toLocalVoiceUri("fr_FR-tom-medium"),
+    uri: `${LOCAL_VOICE_PREFIX}fr_FR-tom-medium`,
     label: "Voix masculine",
     description: "Posée, profonde et professionnelle"
   }
