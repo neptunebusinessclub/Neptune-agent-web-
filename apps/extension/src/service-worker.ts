@@ -138,7 +138,7 @@ async function ensureContentScript(tabId: number): Promise<void> {
   }
 
   try {
-    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["content-script.js"] });
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["content-script.js"] });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Permission de page refusée";
     throw new Error(`PAGE_PERMISSION: impossible d’accéder à cette page : ${message}`);
@@ -224,10 +224,17 @@ async function waitForTab(tabId: number, timeoutMs: number): Promise<void> {
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error("BROWSER_ACTION_FAILED: délai d’action dépassé")), timeoutMs))
-  ]);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("BROWSER_ACTION_FAILED: délai d’action dépassé")), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function classifyBrowserError(error: unknown): BrowserError {
