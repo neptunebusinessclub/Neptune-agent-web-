@@ -97,9 +97,11 @@ async function establishWorkspace(mode: WorkspaceMode, initialUrl?: string): Pro
     const created = await chrome.windows.create({ url: safeInitialUrl(initialUrl), type: "normal", focused: true });
     if (typeof created.id !== "number") throw new Error("BROWSER_ACTION_FAILED: impossible de créer la fenêtre de travail");
     const tabs = await chrome.tabs.query({ windowId: created.id, active: true });
-    if (!tabs[0]?.id) throw new Error("BROWSER_ACTION_FAILED: la nouvelle fenêtre ne contient aucun onglet");
-    tab = tabs[0];
-    if (/^https?:\/\//i.test(tab.url ?? "")) await waitForTab(tab.id, 30_000);
+    const createdTab = tabs[0];
+    const createdTabId = createdTab?.id;
+    if (!createdTab || typeof createdTabId !== "number") throw new Error("BROWSER_ACTION_FAILED: la nouvelle fenêtre ne contient aucun onglet");
+    tab = createdTab;
+    if (/^https?:\/\//i.test(tab.url ?? "")) await waitForTab(createdTabId, 30_000);
   } else {
     tab = await createWorkTab(initialUrl);
   }

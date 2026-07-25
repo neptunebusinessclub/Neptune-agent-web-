@@ -33,13 +33,6 @@ type OffscreenRecognition = {
 };
 type OffscreenRecognitionConstructor = new () => OffscreenRecognition;
 
-declare global {
-  interface Window {
-    SpeechRecognition?: OffscreenRecognitionConstructor;
-    webkitSpeechRecognition?: OffscreenRecognitionConstructor;
-  }
-}
-
 let config: WakeConfig = { wakeWord: "OK Neptune", wakeWordEnabled: true, language: "fr-FR", oneShot: false };
 let recognition: OffscreenRecognition | null = null;
 let desired = false;
@@ -87,7 +80,8 @@ async function handleMessage(message: WakeMessage): Promise<Record<string, unkno
 
 function ensureRecognition(): OffscreenRecognition {
   if (recognition) return recognition;
-  const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+  const speechWindow = window as unknown as { SpeechRecognition?: OffscreenRecognitionConstructor; webkitSpeechRecognition?: OffscreenRecognitionConstructor };
+  const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
   if (!Recognition) {
     void reportStatus("unavailable", "La reconnaissance vocale hors écran n’est pas disponible dans cette version de Chrome.");
     throw new Error("La reconnaissance vocale hors écran n’est pas disponible.");

@@ -336,7 +336,7 @@ async function nextOnboardingStep(): Promise<void> {
   }
   if (brainState !== "ready") {
     await prepareBalancedBrain();
-    if (brainState !== "ready") return;
+    if ((brainState as ReadyState) !== "ready") return;
   }
   preferences.onboardingComplete = true;
   preferences.wakeWordEnabled = true;
