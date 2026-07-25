@@ -1,0 +1,82 @@
+name: Repair Neptune 1.5 sources
+
+on:
+  push:
+    branches: [feat/neptune-experience-v15]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[v15-repair]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/neptune-experience-v15
+          fetch-depth: 0
+
+      - name: Apply exact source fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('apps/extension/src/neptune-app.ts')
+          text = app.read_text()
+          old = '''  if (brainState !== "ready") {
+              await prepareBalancedBrain();
+              if (brainState !== "ready") return;
+            }'''
+          new = '''  if (brainState !== "ready") {
+              await prepareBalancedBrain();
+              if ((brainState as ReadyState) !== "ready") return;
+            }'''
+          if old not in text:
+              raise SystemExit('neptune-app target not found')
+          app.write_text(text.replace(old, new, 1))
+
+          service = Path('apps/extension/src/service-worker.ts')
+          text = service.read_text()
+          old = '''    const tabs = await chrome.tabs.query({ windowId: created.id, active: true });
+              if (!tabs[0]?.id) throw new Error("BROWSER_ACTION_FAILED: la nouvelle fenêtre ne contient aucun onglet");
+              tab = tabs[0];
+              if (/^https?:\\/\\//i.test(tab.url ?? "")) await waitForTab(tab.id, 30_000);'''
+          new = '''    const tabs = await chrome.tabs.query({ windowId: created.id, active: true });
+              const createdTab = tabs[0];
+              const createdTabId = createdTab?.id;
+              if (!createdTab || typeof createdTabId !== "number") throw new Error("BROWSER_ACTION_FAILED: la nouvelle fenêtre ne contient aucun onglet");
+              tab = createdTab;
+              if (/^https?:\\/\\//i.test(tab.url ?? "")) await waitForTab(createdTabId, 30_000);'''
+          if old not in text:
+              raise SystemExit('service-worker target not found')
+          service.write_text(text.replace(old, new, 1))
+
+          offscreen = Path('apps/extension/src/offscreen-wake.ts')
+          text = offscreen.read_text()
+          declaration = '''declare global {
+            interface Window {
+              SpeechRecognition?: OffscreenRecognitionConstructor;
+              webkitSpeechRecognition?: OffscreenRecognitionConstructor;
+            }
+          }
+
+          '''
+          if declaration not in text:
+              raise SystemExit('offscreen declaration target not found')
+          text = text.replace(declaration, '', 1)
+          old = '''  const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;'''
+          new = '''  const speechWindow = window as unknown as { SpeechRecognition?: OffscreenRecognitionConstructor; webkitSpeechRecognition?: OffscreenRecognitionConstructor };
+            const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;'''
+          if old not in text:
+              raise SystemExit('offscreen constructor target not found')
+          offscreen.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit repaired sources
+        run: |
+          git config user.name "Neptune CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/extension/src/neptune-app.ts apps/extension/src/service-worker.ts apps/extension/src/offscreen-wake.ts
+          git commit -m "fix: corriger les contrats TypeScript Neptune 1.5 [v15-repair]"
+          git push origin HEAD:feat/neptune-experience-v15
