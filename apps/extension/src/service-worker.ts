@@ -9,7 +9,7 @@ type ExtensionRequest =
   | { type: "EXECUTE_ACTION"; action: BrowserAction; approved: boolean };
 
 type BrowserError = {
-  code: "HUMAN_VERIFICATION" | "AUTHENTICATION_REQUIRED" | "PAGE_PERMISSION" | "TARGET_NOT_FOUND" | "BROWSER_ACTION_FAILED" | "MISSION_STOPPED";
+  code: "HUMAN_VERIFICATION" | "AUTHENTICATION_REQUIRED" | "PAGE_PERMISSION" | "TARGET_NOT_FOUND" | "BROWSER_ACTION_FAILED" | "MISSION_STOPPED" | "NAVIGATION_TIMEOUT";
   message: string;
   requiresHuman: boolean;
   retryable: boolean;
@@ -78,6 +78,14 @@ async function executeAction(action: BrowserAction, approved: boolean): Promise<
       await waitForTab(tab.id, 30_000);
       return { url, tabId: tab.id };
     }
+    case "NAVIGATE_BACK": {
+      const tab = await getWorkTab();
+      if (!tab.id) throw new Error("Aucun onglet de travail disponible");
+      await chrome.tabs.goBack(tab.id);
+      await waitForTab(tab.id, 30_000);
+      const updated = await chrome.tabs.get(tab.id);
+      return { url: updated.url, tabId: tab.id };
+    }
     case "WAIT":
       await sleep(action.delayMs ?? 1_000);
       return { waitedMs: action.delayMs ?? 1_000 };
@@ -112,11 +120,11 @@ async function executeInWorkTab(action: BrowserAction): Promise<unknown> {
 
   await chrome.tabs.update(tab.id, { active: true });
   await ensureContentScript(tab.id);
-  const response = await chrome.tabs.sendMessage(tab.id, {
+  const response = await withTimeout(chrome.tabs.sendMessage(tab.id, {
     source: "NEPTUNE_AGENT",
     type: "EXECUTE_CONTENT_ACTION",
     action
-  });
+  }), Math.max(12_000, (action.delayMs ?? 0) + 7_000));
   if (!response?.ok) throw new Error(response?.error ?? "L’action sur la page a échoué");
   return response.result ?? response;
 }
@@ -130,7 +138,7 @@ async function ensureContentScript(tabId: number): Promise<void> {
   }
 
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ["content-script.js"] });
+    await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ["content-script.js"] });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Permission de page refusée";
     throw new Error(`PAGE_PERMISSION: impossible d’accéder à cette page : ${message}`);
@@ -190,7 +198,7 @@ function safeInitialUrl(rawUrl?: string): string {
 
 function validateNavigationUrl(rawUrl: string): string {
   const url = new URL(rawUrl);
-  if (!(["http:", "https:"].includes(url.protocol))) throw new Error(`Protocole bloqué : ${url.protocol}`);
+  if (!( ["http:", "https:"].includes(url.protocol))) throw new Error(`Protocole bloqué : ${url.protocol}`);
   url.username = "";
   url.password = "";
   return url.toString();
@@ -202,7 +210,7 @@ async function waitForTab(tabId: number, timeoutMs: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       chrome.tabs.onUpdated.removeListener(listener);
-      reject(new Error("Délai de navigation dépassé"));
+      reject(new Error("NAVIGATION_TIMEOUT: délai de navigation dépassé"));
     }, timeoutMs);
     const listener = (updatedTabId: number, info: chrome.tabs.TabChangeInfo) => {
       if (updatedTabId === tabId && info.status === "complete") {
@@ -215,11 +223,21 @@ async function waitForTab(tabId: number, timeoutMs: number): Promise<void> {
   });
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error("BROWSER_ACTION_FAILED: délai d’action dépassé")), timeoutMs))
+  ]);
+}
+
 function classifyBrowserError(error: unknown): BrowserError {
   const message = error instanceof Error ? error.message : "Erreur navigateur inconnue";
   const normalized = message.toLocaleLowerCase("fr-FR");
   if (normalized.includes("mission_stopped")) {
     return { code: "MISSION_STOPPED", message, requiresHuman: false, retryable: false };
+  }
+  if (normalized.includes("navigation_timeout")) {
+    return { code: "NAVIGATION_TIMEOUT", message, requiresHuman: false, retryable: true };
   }
   if (normalized.includes("platform_guard_detected") || normalized.includes("captcha")) {
     return { code: "HUMAN_VERIFICATION", message, requiresHuman: true, retryable: true };
