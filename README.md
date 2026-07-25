@@ -1,136 +1,98 @@
-# Neptune — Assistant navigateur agentique
+# Neptune — Assistant navigateur local et adaptatif
 
-Neptune est une **extension Chrome Manifest V3 autonome**. Le client installe un seul composant, puis configure l’assistant directement dans le panneau latéral : prénom, voix, niveau de confiance, moteur d’intelligence, mot d’activation et accès aux sites.
-
-Aucun Runtime Windows, serveur local ou jeton technique Neptune n’est nécessaire.
+Neptune est une **extension Chrome Manifest V3 autonome**. Le client installe un seul composant. Aucun Runtime Windows, serveur local ou jeton technique Neptune n’est requis.
 
 ## Version actuelle
 
 ```text
-Neptune 1.3 Voice
+Neptune 1.5 Experience
 ```
 
-Neptune fonctionne par cycles courts :
+Cette version remplace le parcours technique des versions précédentes par une configuration courte et compréhensible.
+
+## Accueil en quatre étapes
+
+1. prénom d’usage ;
+2. choix entre **Voix féminine** et **Voix masculine** ;
+3. test préconfiguré avec `Neptune` ou `OK Neptune` ;
+4. préparation automatique de **Neptune Équilibré**, le cerveau local par défaut.
+
+Les modèles alternatifs, fournisseurs cloud, clés API et niveaux de contrôle restent accessibles dans **Paramètres avancés**. Ils ne sont plus exposés pendant l’accueil.
+
+## Voix intégrées
+
+Le package contient directement deux modèles vocaux français Piper et leur runtime WebAssembly :
+
+- **Voix féminine** : naturelle, claire et chaleureuse ;
+- **Voix masculine** : posée, profonde et professionnelle.
+
+Aucune voix Windows n’est utilisée dans le parcours Neptune. Aucun modèle vocal n’est téléchargé lors du premier lancement. La synthèse s’effectue localement dans un Web Worker séparé.
+
+Lorsque Neptune parle, l’écoute est mise en pause pour éviter l’auto-déclenchement. Le bouton **Arrêter** interrompt la parole, la génération en cours et les actions suivantes.
+
+## Cerveau local par défaut
+
+Neptune sélectionne automatiquement le profil local équilibré :
+
+```text
+Neptune Équilibré
+Qwen2.5 1.5B Instruct — quantification locale WebLLM
+```
+
+Le modèle est préparé pendant la dernière étape d’accueil et conservé dans le cache local de Chrome. Le client n’a pas besoin de connaître son identifiant technique.
+
+Les options suivantes restent disponibles dans les paramètres avancés :
+
+- autres modèles WebLLM locaux ;
+- intelligence intégrée de Chrome ;
+- Mammouth AI ;
+- API compatible OpenAI.
+
+Les clés de fournisseurs cloud sont chiffrées localement avec AES-GCM.
+
+## Intelligence adaptative
+
+Neptune ne déroule pas un scénario complet à l’aveugle. Chaque mission suit une boucle courte :
 
 ```text
 Observer la page
 → décider de la prochaine petite étape
-→ exécuter une action contrôlée
+→ agir
 → vérifier le résultat
 → adapter le plan
 → terminer ou demander une intervention
 ```
 
-Chaque mission est limitée à **16 cycles et 48 actions**. Neptune détecte les observations répétées afin d’éviter de tourner en boucle.
+Chaque mission est limitée à **16 cycles et 48 actions**. Les observations répétées déclenchent une protection anti-boucle.
 
-## Expérience produit
+### Choix de l’espace de travail
 
-Au premier lancement, Neptune guide l’utilisateur en sept étapes :
+Avant une mission navigateur, Neptune analyse la demande et propose le contexte le plus cohérent :
 
-1. prénom d’usage ;
-2. choix, téléchargement éventuel et pré-écoute de la voix ;
-3. niveau de confiance ;
-4. moteur d’intelligence local ou cloud ;
-5. mot d’activation `Neptune` ou `OK Neptune` et test du microphone ;
-6. autorisation de l’onglet de travail ;
-7. première démonstration.
+- **Prendre le relais ici** : utilise la page déjà ouverte ;
+- **Nouvel onglet** : isole la mission sans perturber la navigation actuelle ;
+- **Nouvelle fenêtre** : crée un espace entièrement dédié.
 
-Après l’onboarding, le panneau affiche uniquement :
+Les formulations explicites telles que « dans une nouvelle fenêtre » sont respectées. Lorsqu’une demande concerne « cette page » ou « cet onglet », Neptune recommande la prise de relais sur la page active.
 
-- l’hologramme Neptune et son état ;
-- la conversation textuelle ou vocale ;
-- la progression agentique ;
-- les demandes d’autorisation ;
-- les blocages et la reprise au checkpoint ;
-- l’arrêt immédiat ;
-- les réglages et le journal local.
+## Interface
 
-## Voix Neptune Local
+L’interface repose sur un seul moteur de rendu et un seul gestionnaire d’actions. Les anciennes surcouches DOM ont été retirées.
 
-Neptune 1.3 ajoute des voix françaises open source Piper, téléchargées uniquement après le choix du client :
+L’hologramme central est un **spectre audio circulaire**. Son amplitude, sa vitesse et son apparence évoluent selon l’état :
 
-- **Néréide** : claire, posée et naturelle ;
-- **Triton** : directe, stable et professionnelle ;
-- **Atlas** : neutre, précise et structurée ;
-- **Nova** : dynamique et conversationnelle ;
-- **Mistral** : légère et rapide sur les postes modestes.
+- prêt ;
+- écoute ;
+- réflexion ;
+- exécution ;
+- parole ;
+- autorisation ;
+- blocage ;
+- erreur.
 
-Les voix sont synthétisées dans un **Web Worker séparé** et conservées localement par Chrome. Elles peuvent être pré-écoutées pendant l’onboarding. Les voix système restent disponibles immédiatement comme solution de repli.
+## Actions navigateur contrôlées
 
-Lorsque Neptune parle, la reconnaissance vocale est mise en pause afin d’éviter que l’assistant ne se réactive lui-même. Le bouton **Arrêter** interrompt la lecture et la synthèse en cours.
-
-## Hub d’intelligence
-
-### Neptune automatique
-
-Neptune tente d’abord l’intelligence locale intégrée de Chrome. Lorsqu’elle n’est pas disponible, il peut utiliser le modèle WebLLM local recommandé pour le poste.
-
-### Chrome intégré
-
-Chrome télécharge et gère son propre modèle lorsque l’API Prompt est disponible. Aucun choix technique ni clé API n’est demandé.
-
-### Modèles Neptune Local
-
-Le client choisit un profil compréhensible plutôt qu’un nom technique :
-
-- **Neptune Essentiel** : commandes simples et poste modeste ;
-- **Neptune Rapide** : navigation quotidienne ;
-- **Neptune Équilibré** : meilleur raisonnement général ;
-- **Neptune Avancé** : pages complexes ;
-- **Neptune Expert Local** : poste performant.
-
-Les modèles compatibles présents dans le catalogue WebLLM sont exécutés avec WebGPU dans un **Web Worker séparé**, afin de préserver la fluidité du panneau. Le téléchargement est affiché en temps réel et les fichiers sont conservés dans IndexedDB pour les utilisations suivantes.
-
-Le moteur recommandé dépend des ressources déclarées par le navigateur. L’utilisateur conserve toujours le dernier mot.
-
-### Mammouth AI
-
-L’utilisateur peut connecter sa propre clé Mammouth AI. Neptune utilise l’API compatible OpenAI et le modèle choisi.
-
-### API compatible OpenAI
-
-L’utilisateur peut renseigner un endpoint HTTPS, un nom de modèle et sa clé API. Les clés sont chiffrées localement avec AES-GCM et ne sont jamais stockées dans le code source.
-
-## Architecture
-
-```text
-Extension Chrome Neptune
-├── Side Panel agentique
-│   ├── onboarding
-│   ├── conversation et voix
-│   ├── hub multi-LLM
-│   ├── hub de voix françaises locales
-│   ├── boucle observer-décider-agir-vérifier
-│   ├── checkpoints et reprise
-│   ├── permissions et validations
-│   └── journal local
-├── Worker WebLLM
-│   ├── téléchargement des modèles
-│   ├── cache IndexedDB
-│   └── génération WebGPU hors du thread d’interface
-├── Worker Piper
-│   ├── téléchargement des voix après consentement
-│   ├── stockage local des modèles vocaux
-│   └── synthèse audio hors du thread d’interface
-├── Service Worker
-│   ├── onglet de travail dédié
-│   ├── navigation et exécution du protocole
-│   ├── délais d’action
-│   └── politique de sécurité
-├── Content Script
-│   ├── lecture structurée enrichie
-│   ├── Shadow DOM et iframes accessibles
-│   ├── ciblage accessible
-│   ├── clics, saisies, listes, clavier et scroll
-│   └── détection des protections de plateforme
-└── Stockage local/session
-    ├── préférences et historique
-    ├── clés API chiffrées
-    ├── modèles d’intelligence et voix locales
-    └── mission et checkpoint courant
-```
-
-Le LLM ne peut pas envoyer de JavaScript arbitraire. Il produit un JSON limité aux actions connues :
+Le moteur accepte uniquement les actions prévues par le protocole :
 
 - `OPEN_URL`
 - `READ_PAGE`
@@ -144,7 +106,13 @@ Le LLM ne peut pas envoyer de JavaScript arbitraire. Il produit un JSON limité 
 - `SEND_MESSAGE`
 - `WAIT`
 
-Les actions sont normalisées et contrôlées avant exécution. Après une navigation, un clic important, un envoi ou un scroll, Neptune réobserve la page avant de continuer.
+Le modèle ne peut pas injecter de JavaScript arbitraire. Après une navigation, un clic important, un envoi ou un défilement, Neptune réobserve la page avant de continuer.
+
+## Activation vocale
+
+`Neptune` et `OK Neptune` sont préconfigurés. Lorsque Chrome reste ouvert, un document hors écran peut maintenir l’écoute après autorisation du microphone. Si aucune interface Neptune n’est visible, une fenêtre compacte peut recevoir la commande détectée.
+
+La disponibilité réelle de la reconnaissance vocale dépend des capacités de Chrome sur le poste utilisé.
 
 ## Sécurité
 
@@ -157,17 +125,16 @@ Neptune refuse d’automatiser :
 - signatures et engagements contractuels ;
 - contournements de CAPTCHA ou protections de plateforme.
 
-`SEND_MESSAGE` exige toujours une autorisation explicite. Une autorisation ne vaut que pour l’action concernée. Les contrôles ambigus ne sont pas activés.
+`SEND_MESSAGE` exige une autorisation explicite. Une autorisation ne vaut que pour l’action concernée.
 
 ## Résilience
 
-- chaque mission est persistée dans `chrome.storage.session` ;
-- la fermeture du panneau transforme la mission en checkpoint reprenable ;
-- une erreur de cible relance une observation et une nouvelle décision ;
-- une vérification humaine ou une connexion manquante suspend la mission ;
-- trois observations identiques consécutives déclenchent un arrêt anti-boucle ;
-- une génération locale et une synthèse vocale peuvent être interrompues ;
-- le bouton **Arrêter** interrompt toute action suivante.
+- mission persistée dans `chrome.storage.session` ;
+- reprise au dernier checkpoint après fermeture ;
+- réobservation après erreur de cible ;
+- suspension sur authentification ou vérification humaine ;
+- arrêt anti-boucle après stagnation ;
+- interruption immédiate par **Arrêter**.
 
 ## Construire le produit
 
@@ -180,7 +147,7 @@ pnpm test
 pnpm --filter @neptune/extension build
 ```
 
-Le dossier installable est :
+La construction vérifie et intègre les deux voix françaises et leur runtime dans :
 
 ```text
 apps/extension/dist
@@ -191,51 +158,39 @@ apps/extension/dist
 1. ouvrir `chrome://extensions` ;
 2. activer **Mode développeur** ;
 3. cliquer sur **Charger l’extension non empaquetée** ;
-4. sélectionner `apps/extension/dist` ou le dossier extrait du ZIP ;
+4. sélectionner le dossier extrait contenant directement `manifest.json` ;
 5. ouvrir Neptune depuis l’icône de l’extension ;
-6. suivre l’onboarding affiché automatiquement.
+6. suivre les quatre étapes affichées.
 
 ## Artefact de recette
 
 GitHub Actions produit :
 
 ```text
-neptune-extension-voice-v1.3.0.zip
+neptune-extension-experience-v1.5.0.zip
 ```
 
-Le ZIP contient les moteurs WebLLM et Piper, mais pas les poids des modèles d’intelligence ni des voix. Ceux-ci sont téléchargés uniquement après le choix explicite de l’utilisateur.
+Le ZIP contient les deux voix, Piper, ONNX Runtime, WebLLM et l’interface Neptune. Seuls les poids du cerveau local sont préparés et mis en cache lors du premier accueil.
 
-## Recette minimale
+## Recette prioritaire
 
-- première ouverture : onboarding affiché, aucune configuration technique ;
-- affichage des cinq voix Neptune Local ;
-- téléchargement et pré-écoute d’une voix française ;
-- sélection d’une voix système comme alternative ;
-- fermeture puis réouverture : voix locale toujours signalée comme prête ;
-- test du mot d’activation ;
-- affichage du hub de modèles locaux ;
-- téléchargement d’un modèle avec progression ;
-- fournisseur cloud configurable en alternative ;
-- autorisation des sites accordée ;
-- commande : `Ouvre Le Bon Coin, cherche un bureau à Toulouse et résume les résultats.` ;
-- nouvel onglet Neptune créé ;
-- plusieurs cycles observation/action visibles dans les détails ;
-- erreur de cible : réobservation et adaptation sans repartir de zéro ;
-- envoi externe bloqué jusqu’à validation ;
-- CAPTCHA ou avertissement de plateforme : mission suspendue ;
-- fermeture puis réouverture du panneau : checkpoint proposé ;
-- arrêt immédiat : aucune action ou lecture audio suivante exécutée.
+- écouter les deux voix sans accès à une voix système ;
+- valider `Neptune` et `OK Neptune` ;
+- vérifier que Neptune Équilibré se prépare automatiquement ;
+- ouvrir les paramètres et constater que les fournisseurs sont uniquement dans la zone avancée ;
+- tester : `Prends le relais sur cette page et résume-la.` ;
+- tester : `Ouvre un nouvel onglet et cherche un bureau à Toulouse.` ;
+- tester : `Ouvre une nouvelle fenêtre et cherche un hôtel à Montpellier.` ;
+- tester l’autorisation d’un envoi externe ;
+- tester l’arrêt immédiat ;
+- fermer puis rouvrir le panneau et reprendre une mission au checkpoint.
 
-## Limites assumées de la version 1.3
+## Limites de recette
 
-- le mot d’activation fonctionne tant que le panneau Neptune reste ouvert ;
-- la reconnaissance vocale dépend du service disponible dans Chrome ;
-- la vitesse de la première synthèse Piper dépend du poste et du téléchargement du modèle vocal ;
+- une validation réelle dans Chrome reste nécessaire avant diffusion commerciale générale ;
 - les modèles WebLLM nécessitent WebGPU et suffisamment de mémoire ;
-- l’intelligence Chrome intégrée dépend de la compatibilité Chrome et matérielle du poste ;
-- aucun scraping massif ou envoi en volume n’est inclus ;
-- aucune logique de furtivité ou d’anti-détection n’est développée ;
-- une recette réelle sur les plateformes prioritaires reste nécessaire avant diffusion commerciale générale.
+- la reconnaissance vocale dépend du service disponible dans Chrome ;
+- aucun scraping massif, envoi en volume, mécanisme de furtivité ou contournement de plateforme n’est inclus.
 
 Voir également :
 
