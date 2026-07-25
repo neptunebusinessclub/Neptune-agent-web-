@@ -4,50 +4,79 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const destination = path.join(root, "apps", "extension", "static", "voices");
+const voiceDestination = path.join(root, "apps", "extension", "static", "voices");
+const runtimeDestination = path.join(voiceDestination, "runtime");
 
-const voices = [
+const resources = [
   {
-    file: "fr_FR-siwis-medium.onnx",
+    target: path.join(voiceDestination, "fr_FR-siwis-medium.onnx"),
+    label: "fr_FR-siwis-medium.onnx",
     url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx",
     md5: "20e876e8c839e9b11a26085858f2300c"
   },
   {
-    file: "fr_FR-siwis-medium.onnx.json",
+    target: path.join(voiceDestination, "fr_FR-siwis-medium.onnx.json"),
+    label: "fr_FR-siwis-medium.onnx.json",
     url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json",
     md5: "a407e7e6901feb79c2ea2a5466076cce"
   },
   {
-    file: "fr_FR-tom-medium.onnx",
+    target: path.join(voiceDestination, "fr_FR-tom-medium.onnx"),
+    label: "fr_FR-tom-medium.onnx",
     url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/tom/medium/fr_FR-tom-medium.onnx",
     md5: "5b460c2394a871e675f5c798af149412"
   },
   {
-    file: "fr_FR-tom-medium.onnx.json",
+    target: path.join(voiceDestination, "fr_FR-tom-medium.onnx.json"),
+    label: "fr_FR-tom-medium.onnx.json",
     url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/tom/medium/fr_FR-tom-medium.onnx.json",
     md5: "964d58602df7adf76c2401b070f68ea2"
+  },
+  {
+    target: path.join(runtimeDestination, "piper_phonemize.data"),
+    label: "piper_phonemize.data",
+    url: "https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data"
+  },
+  {
+    target: path.join(runtimeDestination, "piper_phonemize.wasm"),
+    label: "piper_phonemize.wasm",
+    url: "https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm"
+  },
+  {
+    target: path.join(runtimeDestination, "ort-wasm-simd-threaded.jsep.mjs"),
+    label: "ort-wasm-simd-threaded.jsep.mjs",
+    url: "https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/ort-wasm-simd-threaded.jsep.mjs"
+  },
+  {
+    target: path.join(runtimeDestination, "ort-wasm-simd-threaded.jsep.wasm"),
+    label: "ort-wasm-simd-threaded.jsep.wasm",
+    url: "https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/ort-wasm-simd-threaded.jsep.wasm"
   }
 ];
 
-await mkdir(destination, { recursive: true });
+await mkdir(voiceDestination, { recursive: true });
+await mkdir(runtimeDestination, { recursive: true });
 
-for (const voice of voices) {
-  const target = path.join(destination, voice.file);
-  const current = await readFile(target).catch(() => null);
-  if (current && digest(current) === voice.md5) {
-    console.log(`Voix Neptune déjà prête : ${voice.file}`);
+for (const resource of resources) {
+  const current = await readFile(resource.target).catch(() => null);
+  if (current && isValid(current, resource.md5)) {
+    console.log(`Ressource vocale Neptune déjà prête : ${resource.label}`);
     continue;
   }
 
-  console.log(`Intégration de la voix Neptune : ${voice.file}`);
-  const response = await fetch(voice.url, { redirect: "follow" });
-  if (!response.ok) throw new Error(`Téléchargement impossible pour ${voice.file} : HTTP ${response.status}`);
+  console.log(`Intégration de la ressource vocale Neptune : ${resource.label}`);
+  const response = await fetch(resource.url, { redirect: "follow" });
+  if (!response.ok) throw new Error(`Téléchargement impossible pour ${resource.label} : HTTP ${response.status}`);
   const bytes = Buffer.from(await response.arrayBuffer());
-  const actual = digest(bytes);
-  if (actual !== voice.md5) {
-    throw new Error(`Empreinte invalide pour ${voice.file}. Attendue ${voice.md5}, obtenue ${actual}.`);
+  if (!isValid(bytes, resource.md5)) {
+    throw new Error(`Ressource invalide ou incomplète : ${resource.label}.`);
   }
-  await writeFile(target, bytes);
+  await writeFile(resource.target, bytes);
+}
+
+function isValid(value, expectedMd5) {
+  if (value.byteLength < 1_024) return false;
+  return expectedMd5 ? digest(value) === expectedMd5 : true;
 }
 
 function digest(value) {
