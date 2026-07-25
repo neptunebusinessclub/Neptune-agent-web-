@@ -59,7 +59,10 @@ const options = {
   platform: "browser",
   format: "esm",
   target: "chrome138",
-  sourcemap: true,
+  sourcemap: watch,
+  minify: !watch,
+  legalComments: "eof",
+  treeShaking: true,
   logLevel: "info",
   plugins: [browserNodeBuiltinPlugin]
 };
