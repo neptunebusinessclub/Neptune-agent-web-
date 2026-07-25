@@ -46,6 +46,7 @@ export type LocalModelCard = {
 };
 
 type WebLlmEngine = Awaited<ReturnType<typeof CreateWebWorkerMLCEngine>>;
+type WebLlmMessage = { role: "system" | "user" | "assistant"; content: string };
 
 type InitProgressReport = {
   progress?: number;
@@ -54,6 +55,7 @@ type InitProgressReport = {
 };
 
 const STORAGE_SELECTION = "neptune.local-model.selection.v1";
+const STORAGE_READY = "neptune.local-model.ready.v1";
 const DEFAULT_MODEL_ID = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
 
 const nativeLanguageModel = (window as Window & { LanguageModel?: LocalLanguageModelApi }).LanguageModel;
@@ -179,6 +181,8 @@ export async function getLocalModelSelection(): Promise<LocalModelSelection> {
 }
 
 export async function saveLocalModelSelection(selection: LocalModelSelection): Promise<void> {
+  const previous = await getLocalModelSelection();
+  if (previous.engine !== selection.engine || previous.modelId !== selection.modelId) await releaseLocalModel();
   await chrome.storage.local.set({ [STORAGE_SELECTION]: selection });
   window.dispatchEvent(new CustomEvent("neptune-local-model-selection", { detail: selection }));
 }
@@ -214,6 +218,8 @@ const hybridLanguageModel: LocalLanguageModelApi = {
     if (!isWebGpuAvailable()) return "unavailable";
     if (activeWebLlmModel === selection.modelId && webLlmEngine) return "available";
     if (webLlmLoadingModel === selection.modelId) return "downloading";
+    const stored = await chrome.storage.local.get(STORAGE_READY);
+    if (stored[STORAGE_READY] === selection.modelId) return "available";
     return "downloadable";
   },
 
@@ -260,6 +266,7 @@ async function createWebLlmSession(
         }
       });
       activeWebLlmModel = modelId;
+      await chrome.storage.local.set({ [STORAGE_READY]: modelId });
       dispatchProgress(modelId, 1, "Modèle local prêt");
     } catch (error) {
       await releaseLocalModel();
@@ -274,21 +281,24 @@ async function createWebLlmSession(
   return {
     async prompt(input, promptOptions): Promise<string> {
       if (destroyed || !webLlmEngine) throw new Error("La session locale n’est plus active.");
-      const inputMessages = typeof input === "string"
+      const inputMessages: WebLlmMessage[] = typeof input === "string"
         ? [{ role: "user", content: input }]
         : input.map((message) => ({ role: normalizeRole(message.role), content: message.content }));
-      const messages = [
+      const messages: WebLlmMessage[] = [
         ...initialPrompts.map((message) => ({ role: normalizeRole(message.role), content: message.content })),
         ...inputMessages
       ];
-      const request = webLlmEngine.chat.completions.create({
+      const createCompletion = webLlmEngine.chat.completions.create.bind(webLlmEngine.chat.completions) as unknown as (
+        request: { messages: WebLlmMessage[]; temperature: number; max_tokens: number; stream: false }
+      ) => Promise<unknown>;
+      const request = createCompletion({
         messages,
         temperature: 0.2,
         max_tokens: 2_000,
         stream: false
       });
       const completion = await raceWithAbort(request, promptOptions?.signal, webLlmEngine);
-      const content = (completion as unknown as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content;
+      const content = (completion as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content;
       if (typeof content === "string" && content.trim()) return content.trim();
       if (Array.isArray(content)) {
         const text = content.flatMap((part) => typeof part === "string" ? [part] : []).join(" ").trim();
