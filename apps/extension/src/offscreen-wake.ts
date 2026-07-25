@@ -1,3 +1,5 @@
+export {};
+
 type WakeConfig = {
   wakeWord: "Neptune" | "OK Neptune";
   wakeWordEnabled: boolean;
@@ -11,43 +13,35 @@ type WakeMessage =
   | { target: "neptune-offscreen"; type: "WAKE_STOP" }
   | { target: "neptune-offscreen"; type: "WAKE_STATUS" };
 
-type SpeechRecognitionEventLike = Event & {
+type OffscreenRecognitionEvent = Event & {
   resultIndex: number;
   results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
 };
-
-type SpeechRecognitionErrorEventLike = Event & { error: string };
-
-type SpeechRecognitionLike = {
+type OffscreenRecognitionErrorEvent = Event & { error: string };
+type OffscreenRecognition = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
   maxAlternatives: number;
   onstart: (() => void) | null;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onresult: ((event: OffscreenRecognitionEvent) => void) | null;
+  onerror: ((event: OffscreenRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
   start(): void;
   stop(): void;
   abort?(): void;
 };
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type OffscreenRecognitionConstructor = new () => OffscreenRecognition;
 
 declare global {
   interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    SpeechRecognition?: OffscreenRecognitionConstructor;
+    webkitSpeechRecognition?: OffscreenRecognitionConstructor;
   }
 }
 
-let config: WakeConfig = {
-  wakeWord: "OK Neptune",
-  wakeWordEnabled: true,
-  language: "fr-FR",
-  oneShot: false
-};
-let recognition: SpeechRecognitionLike | null = null;
+let config: WakeConfig = { wakeWord: "OK Neptune", wakeWordEnabled: true, language: "fr-FR", oneShot: false };
+let recognition: OffscreenRecognition | null = null;
 let desired = false;
 let paused = true;
 let running = false;
@@ -58,10 +52,7 @@ chrome.runtime.onMessage.addListener((message: WakeMessage, _sender, sendRespons
   if (message?.target !== "neptune-offscreen") return false;
   void handleMessage(message)
     .then((result) => sendResponse({ ok: true, result }))
-    .catch((error: unknown) => sendResponse({
-      ok: false,
-      error: error instanceof Error ? error.message : "Erreur d’écoute hors écran"
-    }));
+    .catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Erreur d’écoute hors écran" }));
   return true;
 });
 
@@ -94,33 +85,27 @@ async function handleMessage(message: WakeMessage): Promise<Record<string, unkno
   }
 }
 
-function ensureRecognition(): SpeechRecognitionLike {
+function ensureRecognition(): OffscreenRecognition {
   if (recognition) return recognition;
   const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
   if (!Recognition) {
     void reportStatus("unavailable", "La reconnaissance vocale hors écran n’est pas disponible dans cette version de Chrome.");
     throw new Error("La reconnaissance vocale hors écran n’est pas disponible.");
   }
-
   recognition = new Recognition();
   recognition.lang = config.language;
   recognition.continuous = true;
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
-  recognition.onstart = () => {
-    running = true;
-    void reportStatus("listening");
-  };
+  recognition.onstart = () => { running = true; void reportStatus("listening"); };
   recognition.onresult = (event) => {
     for (let index = event.resultIndex; index < event.results.length; index += 1) {
       const result = event.results[index];
-      if (!result?.isFinal) continue;
-      handleTranscript(result[0]?.transcript ?? "");
+      if (result?.isFinal) handleTranscript(result[0]?.transcript ?? "");
     }
   };
   recognition.onerror = (event) => {
-    const ignorable = event.error === "aborted" || event.error === "no-speech";
-    if (!ignorable) void reportStatus("error", event.error);
+    if (!["aborted", "no-speech"].includes(event.error)) void reportStatus("error", event.error);
   };
   recognition.onend = () => {
     running = false;
@@ -135,11 +120,8 @@ function startRecognition(): void {
   const instance = ensureRecognition();
   instance.lang = config.language;
   if (running) return;
-  try {
-    instance.start();
-  } catch {
-    scheduleRestart();
-  }
+  try { instance.start(); }
+  catch { scheduleRestart(); }
 }
 
 function stopRecognition(abort: boolean): void {
@@ -156,73 +138,47 @@ function stopRecognition(abort: boolean): void {
 function scheduleRestart(): void {
   window.clearTimeout(restartTimer);
   restartTimer = window.setTimeout(() => {
-    if (!desired || paused) return;
-    startRecognition();
+    if (desired && !paused) startRecognition();
   }, 450);
 }
 
 function handleTranscript(raw: string): void {
   const transcript = raw.replace(/\s+/g, " ").trim();
   if (!transcript) return;
-
   if (!config.wakeWordEnabled) {
     void emitTranscript(transcript);
-    if (config.oneShot) {
-      paused = true;
-      stopRecognition(false);
-    }
+    if (config.oneShot) { paused = true; stopRecognition(false); }
     return;
   }
-
   if (waitingForCommand) {
     waitingForCommand = false;
     void emitTranscript(`${config.wakeWord} ${transcript}`);
     return;
   }
-
   const normalized = normalize(transcript);
   const candidates = [config.wakeWord, "OK Neptune", "Neptune"].map(normalize);
   const detected = candidates.find((candidate) => normalized.includes(candidate));
   if (!detected) return;
-
   const index = normalized.indexOf(detected);
   const command = transcript.slice(Math.max(0, index + detected.length)).replace(/^[,.:;!?\s-]+/, "").trim();
-  if (command) {
-    void emitTranscript(`${config.wakeWord} ${command}`);
-  } else {
+  if (command) void emitTranscript(`${config.wakeWord} ${command}`);
+  else {
     waitingForCommand = true;
     void reportStatus("awaiting-command");
   }
 }
 
 async function emitTranscript(transcript: string): Promise<void> {
-  await chrome.runtime.sendMessage({
-    type: "BACKGROUND_WAKE_TRANSCRIPT",
-    transcript,
-    wakeWord: config.wakeWord,
-    occurredAt: new Date().toISOString()
-  });
+  await chrome.runtime.sendMessage({ type: "BACKGROUND_WAKE_TRANSCRIPT", transcript });
   await reportStatus("command-detected");
 }
 
 async function reportStatus(status: string, error?: string): Promise<void> {
-  await chrome.runtime.sendMessage({
-    type: "WAKE_DOCUMENT_STATUS",
-    status,
-    ...(error ? { error } : {}),
-    occurredAt: new Date().toISOString()
-  }).catch(() => undefined);
+  await chrome.runtime.sendMessage({ type: "WAKE_DOCUMENT_STATUS", status, ...(error ? { error } : {}) }).catch(() => undefined);
 }
 
 function statusSnapshot(): Record<string, unknown> {
-  return {
-    desired,
-    paused,
-    running,
-    waitingForCommand,
-    wakeWord: config.wakeWord,
-    wakeWordEnabled: config.wakeWordEnabled
-  };
+  return { desired, paused, running, waitingForCommand, wakeWord: config.wakeWord, wakeWordEnabled: config.wakeWordEnabled };
 }
 
 function normalize(value: string): string {
