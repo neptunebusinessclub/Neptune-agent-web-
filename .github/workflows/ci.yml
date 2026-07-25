@@ -82,15 +82,38 @@ jobs:
         run: exit 1
 
       - name: Build extension
-        run: pnpm --filter @neptune/extension build
+        id: build
+        continue-on-error: true
+        shell: bash
+        run: pnpm --filter @neptune/extension build 2>&1 | tee build.log
 
-      - name: Validate manifest and multi-LLM package
+      - name: Publish build diagnostics
+        if: steps.build.outcome == 'failure' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo '### CI — erreur du bundle Chrome'
+            echo
+            echo '```text'
+            tail -n 220 build.log
+            echo '```'
+          } > build-comment.md
+          gh pr comment "$PR_NUMBER" --body-file build-comment.md
+
+      - name: Enforce build result
+        if: steps.build.outcome == 'failure'
+        run: exit 1
+
+      - name: Validate manifest, local AI and local voice package
         shell: bash
         run: |
-          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.2.0'||m.permissions?.includes('nativeMessaging')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.3.0'||m.permissions?.includes('nativeMessaging')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
           test -f apps/extension/dist/sidepanel.html
           test -f apps/extension/dist/sidepanel.js
           test -f apps/extension/dist/webllm-worker.js
+          test -f apps/extension/dist/piper-voice-worker.js
           test -f apps/extension/dist/service-worker.js
           test -f apps/extension/dist/content-script.js
           test -f apps/extension/dist/privacy.html
@@ -102,9 +125,12 @@ jobs:
           test -f apps/extension/src/agent-intelligence.ts
           test -f apps/extension/src/local-model-runtime.ts
           test -f apps/extension/src/model-hub-overlay.ts
+          test -f apps/extension/src/local-voice-runtime.ts
+          test -f apps/extension/src/voice-hub-overlay.ts
           grep -q "planAgentStep" apps/extension/src/agentic-sidepanel.ts
           grep -q "MAX_AGENT_CYCLES" apps/extension/src/agent-core.ts
           grep -q "CreateWebWorkerMLCEngine" apps/extension/src/local-model-runtime.ts
+          grep -q "piper-tts-web" apps/extension/src/piper-voice-worker.ts
           if grep -R -n -E "Neptune Runtime|127\.0\.0\.1:8787|Jeton API Neptune|nativeMessaging" apps/extension/dist --exclude='*.map'; then
             echo "A production-forbidden Runtime dependency was found in the extension package."
             exit 1
@@ -117,12 +143,12 @@ jobs:
         shell: bash
         run: |
           cd apps/extension/dist
-          zip -r ../../../neptune-extension-multillm-v1.2.0.zip .
+          zip -r ../../../neptune-extension-voice-v1.3.0.zip .
 
       - name: Publish production extension
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-extension-multillm-v1.2.0
-          path: neptune-extension-multillm-v1.2.0.zip
+          name: neptune-extension-voice-v1.3.0
+          path: neptune-extension-voice-v1.3.0.zip
           if-no-files-found: error
           retention-days: 90
