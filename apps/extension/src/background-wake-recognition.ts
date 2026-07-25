@@ -1,16 +1,11 @@
-type SpeechRecognitionEventLike = Event & {
+export {};
+
+type BackgroundRecognitionResultEvent = Event & {
   resultIndex: number;
   results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
 };
-
-type SpeechRecognitionErrorEventLike = Event & { error: string };
-
-type WakePreferences = {
-  onboardingComplete?: boolean;
-  wakeWordEnabled?: boolean;
-  wakeWord?: "Neptune" | "OK Neptune";
-};
-
+type BackgroundRecognitionErrorEvent = Event & { error: string };
+type WakePreferences = { onboardingComplete?: boolean; wakeWordEnabled?: boolean };
 type WakeStatusMessage = {
   target: "neptune-sidepanel";
   type: "WAKE_STATUS" | "WAKE_TRANSCRIPT";
@@ -31,14 +26,12 @@ class NeptuneBackgroundRecognition {
   interimResults = false;
   maxAlternatives = 1;
   onstart: (() => void) | null = null;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null = null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null = null;
+  onresult: ((event: BackgroundRecognitionResultEvent) => void) | null = null;
+  onerror: ((event: BackgroundRecognitionErrorEvent) => void) | null = null;
   onend: (() => void) | null = null;
   private active = false;
 
-  constructor() {
-    instances.add(this);
-  }
+  constructor() { instances.add(this); }
 
   start(): void {
     if (this.active) return;
@@ -65,20 +58,13 @@ class NeptuneBackgroundRecognition {
 
   emitTranscript(transcript: string): void {
     if (!this.active || !transcript.trim()) return;
-    const result = {
-      isFinal: true,
-      0: { transcript }
-    };
+    const result = { isFinal: true, 0: { transcript } };
     const results = {
       0: result,
       length: 1,
       item(index: number) { return index === 0 ? result : null; }
-    } as unknown as SpeechRecognitionEventLike["results"];
-    this.onresult?.({
-      type: "result",
-      resultIndex: 0,
-      results
-    } as SpeechRecognitionEventLike);
+    } as unknown as BackgroundRecognitionResultEvent["results"];
+    this.onresult?.({ type: "result", resultIndex: 0, results } as BackgroundRecognitionResultEvent);
     if (!this.continuous) {
       this.active = false;
       this.onend?.();
@@ -88,9 +74,7 @@ class NeptuneBackgroundRecognition {
   emitStatus(status?: string, error?: string): void {
     if (!this.active) return;
     if (status === "listening" || status === "ready") this.onstart?.();
-    if (status === "unavailable" || status === "error") {
-      this.onerror?.(createErrorEvent(error || "service-not-allowed"));
-    }
+    if (status === "unavailable" || status === "error") this.onerror?.(createErrorEvent(error || "service-not-allowed"));
   }
 }
 
@@ -99,7 +83,7 @@ installRuntimeBridge();
 installAutomaticStartup();
 
 function installRecognitionProxy(): void {
-  const target = window as Window & {
+  const target = window as unknown as {
     SpeechRecognition?: typeof NeptuneBackgroundRecognition;
     webkitSpeechRecognition?: typeof NeptuneBackgroundRecognition;
   };
@@ -132,7 +116,7 @@ function installAutomaticStartup(): void {
 
 async function maybeAutoStart(): Promise<void> {
   if (autoStarted) return;
-  const button = document.querySelector<HTMLElement>("[data-action='toggle-micro']");
+  const button = document.querySelector<HTMLButtonElement>("button[data-action='toggle-micro']");
   if (!button) return;
   const preferences = await loadPreferences();
   if (!preferences.onboardingComplete || !preferences.wakeWordEnabled) return;
@@ -156,12 +140,12 @@ async function startBackgroundRecognition(instance: NeptuneBackgroundRecognition
   const response = await chrome.runtime.sendMessage({
     type: "START_WAKE_LISTENER",
     config: {
-      wakeWord: preferences.wakeWord ?? "OK Neptune",
+      wakeWord: "OK Neptune",
       wakeWordEnabled: preferences.wakeWordEnabled !== false,
       language: instance.lang || "fr-FR",
       oneShot: !instance.continuous
     }
-  }) as { ok?: boolean; error?: { message?: string } | string; result?: { status?: string } };
+  }) as { ok?: boolean; error?: { message?: string } | string };
   if (!response?.ok) {
     const message = typeof response?.error === "string" ? response.error : response?.error?.message;
     throw new Error(message || "L’écoute vocale hors écran n’a pas pu démarrer.");
@@ -191,6 +175,6 @@ async function loadPreferences(): Promise<WakePreferences> {
   return (stored[PREFERENCES_KEY] as WakePreferences | undefined) ?? {};
 }
 
-function createErrorEvent(error: string): SpeechRecognitionErrorEventLike {
-  return { type: "error", error } as SpeechRecognitionErrorEventLike;
+function createErrorEvent(error: string): BackgroundRecognitionErrorEvent {
+  return { type: "error", error } as BackgroundRecognitionErrorEvent;
 }
