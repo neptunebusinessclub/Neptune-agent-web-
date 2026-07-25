@@ -7,7 +7,7 @@ Aucun Runtime Windows, serveur local ou jeton technique Neptune n’est nécessa
 ## Version actuelle
 
 ```text
-Neptune 1.2 Multi-LLM
+Neptune 1.3 Voice
 ```
 
 Neptune fonctionne par cycles courts :
@@ -28,7 +28,7 @@ Chaque mission est limitée à **16 cycles et 48 actions**. Neptune détecte les
 Au premier lancement, Neptune guide l’utilisateur en sept étapes :
 
 1. prénom d’usage ;
-2. choix et pré-écoute de la voix ;
+2. choix, téléchargement éventuel et pré-écoute de la voix ;
 3. niveau de confiance ;
 4. moteur d’intelligence local ou cloud ;
 5. mot d’activation `Neptune` ou `OK Neptune` et test du microphone ;
@@ -44,6 +44,20 @@ Après l’onboarding, le panneau affiche uniquement :
 - les blocages et la reprise au checkpoint ;
 - l’arrêt immédiat ;
 - les réglages et le journal local.
+
+## Voix Neptune Local
+
+Neptune 1.3 ajoute des voix françaises open source Piper, téléchargées uniquement après le choix du client :
+
+- **Néréide** : claire, posée et naturelle ;
+- **Triton** : directe, stable et professionnelle ;
+- **Atlas** : neutre, précise et structurée ;
+- **Nova** : dynamique et conversationnelle ;
+- **Mistral** : légère et rapide sur les postes modestes.
+
+Les voix sont synthétisées dans un **Web Worker séparé** et conservées localement par Chrome. Elles peuvent être pré-écoutées pendant l’onboarding. Les voix système restent disponibles immédiatement comme solution de repli.
+
+Lorsque Neptune parle, la reconnaissance vocale est mise en pause afin d’éviter que l’assistant ne se réactive lui-même. Le bouton **Arrêter** interrompt la lecture et la synthèse en cours.
 
 ## Hub d’intelligence
 
@@ -85,6 +99,7 @@ Extension Chrome Neptune
 │   ├── onboarding
 │   ├── conversation et voix
 │   ├── hub multi-LLM
+│   ├── hub de voix françaises locales
 │   ├── boucle observer-décider-agir-vérifier
 │   ├── checkpoints et reprise
 │   ├── permissions et validations
@@ -93,6 +108,10 @@ Extension Chrome Neptune
 │   ├── téléchargement des modèles
 │   ├── cache IndexedDB
 │   └── génération WebGPU hors du thread d’interface
+├── Worker Piper
+│   ├── téléchargement des voix après consentement
+│   ├── stockage local des modèles vocaux
+│   └── synthèse audio hors du thread d’interface
 ├── Service Worker
 │   ├── onglet de travail dédié
 │   ├── navigation et exécution du protocole
@@ -107,7 +126,7 @@ Extension Chrome Neptune
 └── Stockage local/session
     ├── préférences et historique
     ├── clés API chiffrées
-    ├── modèles et sélection locale
+    ├── modèles d’intelligence et voix locales
     └── mission et checkpoint courant
 ```
 
@@ -147,7 +166,7 @@ Neptune refuse d’automatiser :
 - une erreur de cible relance une observation et une nouvelle décision ;
 - une vérification humaine ou une connexion manquante suspend la mission ;
 - trois observations identiques consécutives déclenchent un arrêt anti-boucle ;
-- une génération locale peut être interrompue ;
+- une génération locale et une synthèse vocale peuvent être interrompues ;
 - le bouton **Arrêter** interrompt toute action suivante.
 
 ## Construire le produit
@@ -181,20 +200,21 @@ apps/extension/dist
 GitHub Actions produit :
 
 ```text
-neptune-extension-multillm-v1.2.0.zip
+neptune-extension-voice-v1.3.0.zip
 ```
 
-Le ZIP contient le moteur WebLLM, mais pas les poids des modèles. Ceux-ci sont téléchargés uniquement après le choix de l’utilisateur. Cet artefact est destiné à la recette interne et à la préparation de la soumission Chrome Web Store.
+Le ZIP contient les moteurs WebLLM et Piper, mais pas les poids des modèles d’intelligence ni des voix. Ceux-ci sont téléchargés uniquement après le choix explicite de l’utilisateur.
 
 ## Recette minimale
 
 - première ouverture : onboarding affiché, aucune configuration technique ;
-- choix d’une voix et pré-écoute ;
+- affichage des cinq voix Neptune Local ;
+- téléchargement et pré-écoute d’une voix française ;
+- sélection d’une voix système comme alternative ;
+- fermeture puis réouverture : voix locale toujours signalée comme prête ;
 - test du mot d’activation ;
 - affichage du hub de modèles locaux ;
-- recommandation visible ;
 - téléchargement d’un modèle avec progression ;
-- réouverture du panneau : modèle toujours signalé comme prêt ;
 - fournisseur cloud configurable en alternative ;
 - autorisation des sites accordée ;
 - commande : `Ouvre Le Bon Coin, cherche un bureau à Toulouse et résume les résultats.` ;
@@ -204,12 +224,13 @@ Le ZIP contient le moteur WebLLM, mais pas les poids des modèles. Ceux-ci sont 
 - envoi externe bloqué jusqu’à validation ;
 - CAPTCHA ou avertissement de plateforme : mission suspendue ;
 - fermeture puis réouverture du panneau : checkpoint proposé ;
-- arrêt immédiat : aucune action suivante exécutée.
+- arrêt immédiat : aucune action ou lecture audio suivante exécutée.
 
-## Limites assumées de la version 1.2
+## Limites assumées de la version 1.3
 
 - le mot d’activation fonctionne tant que le panneau Neptune reste ouvert ;
-- la reconnaissance et la synthèse vocales dépendent des services disponibles dans Chrome et le système ;
+- la reconnaissance vocale dépend du service disponible dans Chrome ;
+- la vitesse de la première synthèse Piper dépend du poste et du téléchargement du modèle vocal ;
 - les modèles WebLLM nécessitent WebGPU et suffisamment de mémoire ;
 - l’intelligence Chrome intégrée dépend de la compatibilité Chrome et matérielle du poste ;
 - aucun scraping massif ou envoi en volume n’est inclus ;
