@@ -1,16 +1,16 @@
 # Neptune — Assistant navigateur agentique
 
-Neptune est une **extension Chrome Manifest V3 autonome**. Le client installe un seul composant, puis configure l’assistant directement dans le panneau latéral : prénom, voix, niveau de confiance, intelligence locale ou cloud, mot d’activation et accès aux sites.
+Neptune est une **extension Chrome Manifest V3 autonome**. Le client installe un seul composant, puis configure l’assistant directement dans le panneau latéral : prénom, voix, niveau de confiance, moteur d’intelligence, mot d’activation et accès aux sites.
 
 Aucun Runtime Windows, serveur local ou jeton technique Neptune n’est nécessaire.
 
 ## Version actuelle
 
 ```text
-Neptune 1.1 Agentique
+Neptune 1.2 Multi-LLM
 ```
 
-La version 1.1 ne repose plus sur un plan figé. Elle fonctionne en cycles courts :
+Neptune fonctionne par cycles courts :
 
 ```text
 Observer la page
@@ -30,7 +30,7 @@ Au premier lancement, Neptune guide l’utilisateur en sept étapes :
 1. prénom d’usage ;
 2. choix et pré-écoute de la voix ;
 3. niveau de confiance ;
-4. moteur d’intelligence ;
+4. moteur d’intelligence local ou cloud ;
 5. mot d’activation `Neptune` ou `OK Neptune` et test du microphone ;
 6. autorisation de l’onglet de travail ;
 7. première démonstration.
@@ -45,15 +45,33 @@ Après l’onboarding, le panneau affiche uniquement :
 - l’arrêt immédiat ;
 - les réglages et le journal local.
 
-## Intelligence
+## Hub d’intelligence
 
-### Chrome AI local
+### Neptune automatique
 
-Neptune utilise l’API Prompt intégrée à Chrome lorsque le poste est compatible. Chrome télécharge et gère le modèle local. Après installation, les échanges peuvent être traités sur l’ordinateur.
+Neptune tente d’abord l’intelligence locale intégrée de Chrome. Lorsqu’elle n’est pas disponible, il peut utiliser le modèle WebLLM local recommandé pour le poste.
+
+### Chrome intégré
+
+Chrome télécharge et gère son propre modèle lorsque l’API Prompt est disponible. Aucun choix technique ni clé API n’est demandé.
+
+### Modèles Neptune Local
+
+Le client choisit un profil compréhensible plutôt qu’un nom technique :
+
+- **Neptune Essentiel** : commandes simples et poste modeste ;
+- **Neptune Rapide** : navigation quotidienne ;
+- **Neptune Équilibré** : meilleur raisonnement général ;
+- **Neptune Avancé** : pages complexes ;
+- **Neptune Expert Local** : poste performant.
+
+Les modèles compatibles présents dans le catalogue WebLLM sont exécutés avec WebGPU dans un **Web Worker séparé**, afin de préserver la fluidité du panneau. Le téléchargement est affiché en temps réel et les fichiers sont conservés dans IndexedDB pour les utilisations suivantes.
+
+Le moteur recommandé dépend des ressources déclarées par le navigateur. L’utilisateur conserve toujours le dernier mot.
 
 ### Mammouth AI
 
-L’utilisateur peut connecter sa propre clé Mammouth AI. Neptune utilise l’API compatible OpenAI et le modèle recommandé par défaut.
+L’utilisateur peut connecter sa propre clé Mammouth AI. Neptune utilise l’API compatible OpenAI et le modèle choisi.
 
 ### API compatible OpenAI
 
@@ -66,10 +84,15 @@ Extension Chrome Neptune
 ├── Side Panel agentique
 │   ├── onboarding
 │   ├── conversation et voix
+│   ├── hub multi-LLM
 │   ├── boucle observer-décider-agir-vérifier
 │   ├── checkpoints et reprise
 │   ├── permissions et validations
 │   └── journal local
+├── Worker WebLLM
+│   ├── téléchargement des modèles
+│   ├── cache IndexedDB
+│   └── génération WebGPU hors du thread d’interface
 ├── Service Worker
 │   ├── onglet de travail dédié
 │   ├── navigation et exécution du protocole
@@ -84,6 +107,7 @@ Extension Chrome Neptune
 └── Stockage local/session
     ├── préférences et historique
     ├── clés API chiffrées
+    ├── modèles et sélection locale
     └── mission et checkpoint courant
 ```
 
@@ -101,7 +125,7 @@ Le LLM ne peut pas envoyer de JavaScript arbitraire. Il produit un JSON limité 
 - `SEND_MESSAGE`
 - `WAIT`
 
-Les actions sont normalisées et contrôlées avant exécution. Les cycles sont volontairement courts : après une navigation, un clic important, un envoi ou un scroll, Neptune réobserve la page avant de continuer.
+Les actions sont normalisées et contrôlées avant exécution. Après une navigation, un clic important, un envoi ou un scroll, Neptune réobserve la page avant de continuer.
 
 ## Sécurité
 
@@ -123,6 +147,7 @@ Neptune refuse d’automatiser :
 - une erreur de cible relance une observation et une nouvelle décision ;
 - une vérification humaine ou une connexion manquante suspend la mission ;
 - trois observations identiques consécutives déclenchent un arrêt anti-boucle ;
+- une génération locale peut être interrompue ;
 - le bouton **Arrêter** interrompt toute action suivante.
 
 ## Construire le produit
@@ -156,17 +181,21 @@ apps/extension/dist
 GitHub Actions produit :
 
 ```text
-neptune-extension-agentique-v1.1.0.zip
+neptune-extension-multillm-v1.2.0.zip
 ```
 
-Cet artefact est destiné à la recette interne et à la préparation de la soumission Chrome Web Store. La publication publique nécessite toujours le compte éditeur, les visuels de fiche, l’URL publique de confidentialité et la validation de Google.
+Le ZIP contient le moteur WebLLM, mais pas les poids des modèles. Ceux-ci sont téléchargés uniquement après le choix de l’utilisateur. Cet artefact est destiné à la recette interne et à la préparation de la soumission Chrome Web Store.
 
 ## Recette minimale
 
 - première ouverture : onboarding affiché, aucune configuration technique ;
 - choix d’une voix et pré-écoute ;
 - test du mot d’activation ;
-- Chrome AI local ou fournisseur cloud configuré ;
+- affichage du hub de modèles locaux ;
+- recommandation visible ;
+- téléchargement d’un modèle avec progression ;
+- réouverture du panneau : modèle toujours signalé comme prêt ;
+- fournisseur cloud configurable en alternative ;
 - autorisation des sites accordée ;
 - commande : `Ouvre Le Bon Coin, cherche un bureau à Toulouse et résume les résultats.` ;
 - nouvel onglet Neptune créé ;
@@ -177,11 +206,12 @@ Cet artefact est destiné à la recette interne et à la préparation de la soum
 - fermeture puis réouverture du panneau : checkpoint proposé ;
 - arrêt immédiat : aucune action suivante exécutée.
 
-## Limites assumées de la version 1.1
+## Limites assumées de la version 1.2
 
 - le mot d’activation fonctionne tant que le panneau Neptune reste ouvert ;
 - la reconnaissance et la synthèse vocales dépendent des services disponibles dans Chrome et le système ;
-- l’intelligence locale dépend de la compatibilité Chrome et matérielle du poste ;
+- les modèles WebLLM nécessitent WebGPU et suffisamment de mémoire ;
+- l’intelligence Chrome intégrée dépend de la compatibilité Chrome et matérielle du poste ;
 - aucun scraping massif ou envoi en volume n’est inclus ;
 - aucune logique de furtivité ou d’anti-détection n’est développée ;
 - une recette réelle sur les plateformes prioritaires reste nécessaire avant diffusion commerciale générale.

@@ -1,4 +1,9 @@
 import type { BrowserAction } from "@neptune/protocol";
+import {
+  getLocalLanguageModelApi,
+  type LocalLanguageModelSession,
+  type LocalModelAvailability
+} from "./local-model-runtime";
 
 export type ProviderId = "chrome-local" | "mammouth" | "openai-compatible";
 export type TrustLevel = "prudent" | "assisted" | "controlled";
@@ -20,41 +25,12 @@ export type AgentReply = {
   actions: BrowserAction[];
 };
 
-type ChromeAiAvailability = "unavailable" | "downloadable" | "downloading" | "available";
-
-type ChromeAiMonitor = {
-  addEventListener(type: "downloadprogress", listener: (event: { loaded: number }) => void): void;
-};
-
-type ChromeAiSession = {
-  prompt(input: string | Array<{ role: string; content: string }>, options?: { signal?: AbortSignal; responseConstraint?: unknown; omitResponseConstraintInput?: boolean }): Promise<string>;
-  promptStreaming?(input: string | Array<{ role: string; content: string }>, options?: { signal?: AbortSignal }): ReadableStream<string>;
-  destroy(): void;
-};
-
-type ChromeAiStatic = {
-  availability(options?: unknown): Promise<ChromeAiAvailability>;
-  create(options?: {
-    initialPrompts?: Array<{ role: string; content: string }>;
-    expectedInputs?: Array<{ type: "text"; languages: string[] }>;
-    expectedOutputs?: Array<{ type: "text"; languages: string[] }>;
-    monitor?: (monitor: ChromeAiMonitor) => void;
-    signal?: AbortSignal;
-  }): Promise<ChromeAiSession>;
-};
-
-declare global {
-  interface Window {
-    LanguageModel?: ChromeAiStatic;
-  }
-}
-
 const MAX_MESSAGES = 18;
 const MAX_ACTIONS = 24;
 const BLOCKED_GOAL = /\b(payer|paiement|acheter|commande|carte bancaire|iban|virement|mot de passe|password|supprimer le compte|signature|signer|contrat)\b/i;
 const BROWSER_SIGNALS = /\b(ouvre|va sur|navigue|cherche sur|lis la page|clique|remplis|sélectionne|selectionne|fais défiler|defiler|envoie un message|instagram|linkedin|leboncoin|le bon coin|site web|navigateur|page actuelle)\b/i;
 
-let chromeSession: ChromeAiSession | null = null;
+let chromeSession: LocalLanguageModelSession | null = null;
 let chromeSessionOwner = "";
 
 export function isBrowserTask(text: string): boolean {
@@ -65,8 +41,8 @@ export function isForbiddenGoal(text: string): boolean {
   return BLOCKED_GOAL.test(text);
 }
 
-export async function getChromeAiAvailability(): Promise<ChromeAiAvailability> {
-  const api = window.LanguageModel;
+export async function getChromeAiAvailability(): Promise<LocalModelAvailability> {
+  const api = getLocalLanguageModelApi();
   if (!api) return "unavailable";
   try {
     return await api.availability({
@@ -79,8 +55,8 @@ export async function getChromeAiAvailability(): Promise<ChromeAiAvailability> {
 }
 
 export async function prepareChromeAi(userName: string, onProgress: (progress: number) => void): Promise<void> {
-  const api = window.LanguageModel;
-  if (!api) throw new Error("L’intelligence locale de Chrome n’est pas disponible sur cet ordinateur.");
+  const api = getLocalLanguageModelApi();
+  if (!api) throw new Error("Aucun moteur local compatible n’est disponible sur cet ordinateur.");
   chromeSession?.destroy();
   chromeSession = await api.create({
     expectedInputs: [{ type: "text", languages: ["fr", "en"] }],
@@ -291,7 +267,7 @@ function normalizeEndpoint(endpoint?: string): string {
   const raw = endpoint?.trim().replace(/\/$/, "") ?? "";
   if (!raw) throw new Error("L’adresse API du moteur cloud n’est pas configurée.");
   const url = new URL(raw);
-  if (!(["https:", "http:"].includes(url.protocol))) throw new Error("L’adresse API doit utiliser HTTP ou HTTPS.");
+  if (!( ["https:", "http:"].includes(url.protocol))) throw new Error("L’adresse API doit utiliser HTTP ou HTTPS.");
   if (url.protocol === "http:" && !["127.0.0.1", "localhost"].includes(url.hostname)) {
     throw new Error("Une adresse cloud doit utiliser HTTPS.");
   }
@@ -301,7 +277,7 @@ function normalizeEndpoint(endpoint?: string): string {
 function safeUrl(raw: string): string | undefined {
   try {
     const url = new URL(raw);
-    if (!(["http:", "https:"].includes(url.protocol))) return undefined;
+    if (!( ["http:", "https:"].includes(url.protocol))) return undefined;
     url.username = "";
     url.password = "";
     return url.toString();
