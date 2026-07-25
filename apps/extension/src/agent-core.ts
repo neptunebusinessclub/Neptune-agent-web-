@@ -34,12 +34,12 @@ export type AgentMission = {
   maxActions: number;
   actions: BrowserAction[];
   currentIndex: number;
-  approvedActionId?: string;
+  approvedActionId?: string | undefined;
   results: Array<{ actionId: string; result: unknown }>;
   history: AgentHistoryEntry[];
   fingerprints: string[];
-  lastObservation?: AgentObservation;
-  lastError?: string;
+  lastObservation?: AgentObservation | undefined;
+  lastError?: string | undefined;
   createdAt: string;
   updatedAt: string;
 };
