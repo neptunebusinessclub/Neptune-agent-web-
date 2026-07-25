@@ -45,12 +45,12 @@ const resources = [
   {
     target: path.join(runtimeDestination, "ort-wasm-simd-threaded.jsep.mjs"),
     label: "ort-wasm-simd-threaded.jsep.mjs",
-    url: "https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/ort-wasm-simd-threaded.jsep.mjs"
+    url: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort-wasm-simd-threaded.jsep.mjs"
   },
   {
     target: path.join(runtimeDestination, "ort-wasm-simd-threaded.jsep.wasm"),
     label: "ort-wasm-simd-threaded.jsep.wasm",
-    url: "https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/ort-wasm-simd-threaded.jsep.wasm"
+    url: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort-wasm-simd-threaded.jsep.wasm"
   }
 ];
 
