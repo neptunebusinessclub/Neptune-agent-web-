@@ -52,7 +52,7 @@ declare global {
 const MAX_MESSAGES = 18;
 const MAX_ACTIONS = 24;
 const BLOCKED_GOAL = /\b(payer|paiement|acheter|commande|carte bancaire|iban|virement|mot de passe|password|supprimer le compte|signature|signer|contrat)\b/i;
-const BROWSER_SIGNALS = /\b(ouvre|va sur|navigue|cherche sur|lis la page|clique|remplis|envoie un message|instagram|linkedin|leboncoin|le bon coin|site web|navigateur|page actuelle)\b/i;
+const BROWSER_SIGNALS = /\b(ouvre|va sur|navigue|cherche sur|lis la page|clique|remplis|sélectionne|selectionne|fais défiler|defiler|envoie un message|instagram|linkedin|leboncoin|le bon coin|site web|navigateur|page actuelle)\b/i;
 
 let chromeSession: ChromeAiSession | null = null;
 let chromeSessionOwner = "";
@@ -121,11 +121,10 @@ export async function askIntelligence(
     return chromeSession!.prompt(transcript, signal ? { signal } : undefined);
   }
 
-  const response = await callOpenAiCompatible(provider, [
+  return callOpenAiCompatible(provider, [
     { role: "system", content: systemPrompt(userName) },
     ...cleanMessages
   ], signal);
-  return response;
 }
 
 export async function planBrowserTask(
@@ -188,7 +187,19 @@ function normalizeAction(value: unknown): BrowserAction[] {
   if (!value || typeof value !== "object") return [];
   const action = value as Record<string, unknown>;
   const type = typeof action.type === "string" ? action.type.toUpperCase() : "";
-  const allowed = ["OPEN_URL", "READ_PAGE", "CLICK_ELEMENT", "FILL_FIELD", "SEND_MESSAGE", "WAIT"] as const;
+  const allowed = [
+    "OPEN_URL",
+    "READ_PAGE",
+    "CLICK_ELEMENT",
+    "FILL_FIELD",
+    "SELECT_OPTION",
+    "PRESS_KEY",
+    "SCROLL_PAGE",
+    "WAIT_FOR_ELEMENT",
+    "NAVIGATE_BACK",
+    "SEND_MESSAGE",
+    "WAIT"
+  ] as const;
   if (!allowed.includes(type as typeof allowed[number])) return [];
 
   let risk: BrowserAction["risk"] = action.risk === "draft_write" || action.risk === "external_write" || action.risk === "sensitive"
@@ -202,11 +213,11 @@ function normalizeAction(value: unknown): BrowserAction[] {
   if (risk === "external_write" || risk === "sensitive") requiresApproval = true;
 
   const target = normalizeTarget(action.target);
-  if (["CLICK_ELEMENT", "FILL_FIELD", "SEND_MESSAGE"].includes(type) && !target) return [];
+  if (["CLICK_ELEMENT", "FILL_FIELD", "SELECT_OPTION", "WAIT_FOR_ELEMENT", "SEND_MESSAGE"].includes(type) && !target) return [];
   const url = typeof action.url === "string" ? safeUrl(action.url) : undefined;
   if (type === "OPEN_URL" && !url) return [];
   const valueText = typeof action.value === "string" ? action.value.slice(0, 10_000) : undefined;
-  if (["FILL_FIELD", "SEND_MESSAGE"].includes(type) && valueText === undefined) return [];
+  if (["FILL_FIELD", "SELECT_OPTION", "PRESS_KEY", "SCROLL_PAGE", "SEND_MESSAGE"].includes(type) && valueText === undefined) return [];
 
   return [{
     id: crypto.randomUUID(),
@@ -257,7 +268,7 @@ async function callOpenAiCompatible(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ model, messages, temperature: .25, max_tokens: 2_000, stream: false }),
+      body: JSON.stringify({ model, messages, temperature: .2, max_tokens: 2_000, stream: false }),
       signal: combinedSignal
     });
     const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
@@ -306,7 +317,7 @@ function systemPrompt(userName: string): string {
 function plannerPrompt(userName: string, trustLevel: TrustLevel): string {
   return `Tu planifies les actions navigateur de Neptune pour ${userName || "l’utilisateur"}. Niveau de confiance : ${trustLevel}.
 Réponds uniquement par un objet JSON valide de cette forme :
-{"text":"explication courte en français","actions":[{"type":"OPEN_URL|READ_PAGE|CLICK_ELEMENT|FILL_FIELD|SEND_MESSAGE|WAIT","label":"description","risk":"read_only|draft_write|external_write|sensitive","requiresApproval":false,"url":"https://...","target":{"role":"button","name":"...","text":"..."},"value":"...","delayMs":1000}]}
+{"text":"explication courte en français","actions":[{"type":"OPEN_URL|READ_PAGE|CLICK_ELEMENT|FILL_FIELD|SELECT_OPTION|PRESS_KEY|SCROLL_PAGE|WAIT_FOR_ELEMENT|NAVIGATE_BACK|SEND_MESSAGE|WAIT","label":"description","risk":"read_only|draft_write|external_write|sensitive","requiresApproval":false,"url":"https://...","target":{"role":"button","name":"...","text":"..."},"value":"...","delayMs":1000}]}
 Règles impératives :
 - au maximum ${MAX_ACTIONS} actions ;
 - OPEN_URL et READ_PAGE sont read_only ;

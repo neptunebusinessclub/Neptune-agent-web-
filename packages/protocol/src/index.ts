@@ -5,6 +5,11 @@ export const actionTypeSchema = z.enum([
   "READ_PAGE",
   "CLICK_ELEMENT",
   "FILL_FIELD",
+  "SELECT_OPTION",
+  "PRESS_KEY",
+  "SCROLL_PAGE",
+  "WAIT_FOR_ELEMENT",
+  "NAVIGATE_BACK",
   "ASK_APPROVAL",
   "SEND_MESSAGE",
   "WAIT",
@@ -43,13 +48,13 @@ export const browserActionSchema = z.object({
   if (action.type === "OPEN_URL" && !action.url) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "OPEN_URL requires url" });
   }
-  if (["CLICK_ELEMENT", "FILL_FIELD", "SEND_MESSAGE"].includes(action.type) && !action.target) {
+  if (["CLICK_ELEMENT", "FILL_FIELD", "SELECT_OPTION", "WAIT_FOR_ELEMENT", "SEND_MESSAGE"].includes(action.type) && !action.target) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: `${action.type} requires target` });
   }
-  if (["FILL_FIELD", "SEND_MESSAGE"].includes(action.type) && action.value === undefined) {
+  if (["FILL_FIELD", "SELECT_OPTION", "PRESS_KEY", "SCROLL_PAGE", "SEND_MESSAGE"].includes(action.type) && action.value === undefined) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: `${action.type} requires value` });
   }
-  if (["SEND_MESSAGE"].includes(action.type) && !action.requiresApproval) {
+  if (action.type === "SEND_MESSAGE" && !action.requiresApproval) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "SEND_MESSAGE must require approval" });
   }
 });

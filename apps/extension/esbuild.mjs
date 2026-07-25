@@ -14,12 +14,12 @@ const options = {
   entryPoints: {
     "service-worker": path.join(root, "src/service-worker.ts"),
     "content-script": path.join(root, "src/content-script.ts"),
-    "sidepanel": path.join(root, "src/sidepanel.ts")
+    "sidepanel": path.join(root, "src/agentic-sidepanel.ts")
   },
   outdir,
   bundle: true,
   format: "esm",
-  target: "chrome114",
+  target: "chrome138",
   sourcemap: true,
   logLevel: "info"
 };

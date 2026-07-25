@@ -1,8 +1,27 @@
-# Neptune — Assistant navigateur
+# Neptune — Assistant navigateur agentique
 
 Neptune est une **extension Chrome Manifest V3 autonome**. Le client installe un seul composant, puis configure l’assistant directement dans le panneau latéral : prénom, voix, niveau de confiance, intelligence locale ou cloud, mot d’activation et accès aux sites.
 
 Aucun Runtime Windows, serveur local ou jeton technique Neptune n’est nécessaire.
+
+## Version actuelle
+
+```text
+Neptune 1.1 Agentique
+```
+
+La version 1.1 ne repose plus sur un plan figé. Elle fonctionne en cycles courts :
+
+```text
+Observer la page
+→ décider de la prochaine petite étape
+→ exécuter une action contrôlée
+→ vérifier le résultat
+→ adapter le plan
+→ terminer ou demander une intervention
+```
+
+Chaque mission est limitée à **16 cycles et 48 actions**. Neptune détecte les observations répétées afin d’éviter de tourner en boucle.
 
 ## Expérience produit
 
@@ -12,7 +31,7 @@ Au premier lancement, Neptune guide l’utilisateur en sept étapes :
 2. choix et pré-écoute de la voix ;
 3. niveau de confiance ;
 4. moteur d’intelligence ;
-5. mot d’activation `Neptune` ou `OK Neptune` ;
+5. mot d’activation `Neptune` ou `OK Neptune` et test du microphone ;
 6. autorisation de l’onglet de travail ;
 7. première démonstration.
 
@@ -20,10 +39,11 @@ Après l’onboarding, le panneau affiche uniquement :
 
 - l’hologramme Neptune et son état ;
 - la conversation textuelle ou vocale ;
+- la progression agentique ;
 - les demandes d’autorisation ;
-- les blocages et boutons de reprise ;
+- les blocages et la reprise au checkpoint ;
 - l’arrêt immédiat ;
-- un écran de réglages et un journal local.
+- les réglages et le journal local.
 
 ## Intelligence
 
@@ -43,35 +63,45 @@ L’utilisateur peut renseigner un endpoint HTTPS, un nom de modèle et sa clé 
 
 ```text
 Extension Chrome Neptune
-├── Side Panel
+├── Side Panel agentique
 │   ├── onboarding
 │   ├── conversation et voix
-│   ├── sélection du LLM
+│   ├── boucle observer-décider-agir-vérifier
+│   ├── checkpoints et reprise
 │   ├── permissions et validations
 │   └── journal local
 ├── Service Worker
 │   ├── onglet de travail dédié
-│   ├── exécution du protocole d’actions
+│   ├── navigation et exécution du protocole
+│   ├── délais d’action
 │   └── politique de sécurité
 ├── Content Script
-│   ├── lecture structurée de page
+│   ├── lecture structurée enrichie
+│   ├── Shadow DOM et iframes accessibles
 │   ├── ciblage accessible
-│   └── clics et saisies contrôlés
-└── Stockage local
+│   ├── clics, saisies, listes, clavier et scroll
+│   └── détection des protections de plateforme
+└── Stockage local/session
     ├── préférences et historique
-    └── clés API chiffrées
+    ├── clés API chiffrées
+    └── mission et checkpoint courant
 ```
 
-Le LLM ne peut pas envoyer du JavaScript arbitraire. Il produit un plan JSON limité aux actions connues :
+Le LLM ne peut pas envoyer de JavaScript arbitraire. Il produit un JSON limité aux actions connues :
 
 - `OPEN_URL`
 - `READ_PAGE`
 - `CLICK_ELEMENT`
 - `FILL_FIELD`
+- `SELECT_OPTION`
+- `PRESS_KEY`
+- `SCROLL_PAGE`
+- `WAIT_FOR_ELEMENT`
+- `NAVIGATE_BACK`
 - `SEND_MESSAGE`
 - `WAIT`
 
-Le plan est normalisé et contrôlé avant exécution.
+Les actions sont normalisées et contrôlées avant exécution. Les cycles sont volontairement courts : après une navigation, un clic important, un envoi ou un scroll, Neptune réobserve la page avant de continuer.
 
 ## Sécurité
 
@@ -79,12 +109,21 @@ Neptune refuse d’automatiser :
 
 - paiements et achats ;
 - virements, IBAN et cartes bancaires ;
-- mots de passe et codes secrets ;
+- mots de passe, OTP et codes secrets ;
 - suppressions de compte ;
 - signatures et engagements contractuels ;
 - contournements de CAPTCHA ou protections de plateforme.
 
-`SEND_MESSAGE` exige toujours une autorisation explicite. Les contrôles ambigus ne sont pas activés.
+`SEND_MESSAGE` exige toujours une autorisation explicite. Une autorisation ne vaut que pour l’action concernée. Les contrôles ambigus ne sont pas activés.
+
+## Résilience
+
+- chaque mission est persistée dans `chrome.storage.session` ;
+- la fermeture du panneau transforme la mission en checkpoint reprenable ;
+- une erreur de cible relance une observation et une nouvelle décision ;
+- une vérification humaine ou une connexion manquante suspend la mission ;
+- trois observations identiques consécutives déclenchent un arrêt anti-boucle ;
+- le bouton **Arrêter** interrompt toute action suivante.
 
 ## Construire le produit
 
@@ -103,45 +142,49 @@ Le dossier installable est :
 apps/extension/dist
 ```
 
-## Installer la version de test
+## Installer la version de recette
 
 1. ouvrir `chrome://extensions` ;
 2. activer **Mode développeur** ;
 3. cliquer sur **Charger l’extension non empaquetée** ;
-4. sélectionner `apps/extension/dist` ;
+4. sélectionner `apps/extension/dist` ou le dossier extrait du ZIP ;
 5. ouvrir Neptune depuis l’icône de l’extension ;
 6. suivre l’onboarding affiché automatiquement.
 
-## Artefact de production
+## Artefact de recette
 
-Après fusion dans `main`, GitHub Actions produit :
+GitHub Actions produit :
 
 ```text
-neptune-extension-production-v1.0.0.zip
+neptune-extension-agentique-v1.1.0.zip
 ```
 
-Cet artefact est prêt pour les tests de recette et la soumission Chrome Web Store. La publication publique nécessite encore le compte éditeur, les visuels de fiche, l’URL publique de confidentialité et la validation de Google.
+Cet artefact est destiné à la recette interne et à la préparation de la soumission Chrome Web Store. La publication publique nécessite toujours le compte éditeur, les visuels de fiche, l’URL publique de confidentialité et la validation de Google.
 
 ## Recette minimale
 
 - première ouverture : onboarding affiché, aucune configuration technique ;
 - choix d’une voix et pré-écoute ;
+- test du mot d’activation ;
 - Chrome AI local ou fournisseur cloud configuré ;
-- autorisation des sites accordée depuis l’onboarding ;
-- commande : `Ouvre Le Bon Coin et lis la page d’accueil.` ;
+- autorisation des sites accordée ;
+- commande : `Ouvre Le Bon Coin, cherche un bureau à Toulouse et résume les résultats.` ;
 - nouvel onglet Neptune créé ;
-- page lue et résultat résumé dans la conversation ;
+- plusieurs cycles observation/action visibles dans les détails ;
+- erreur de cible : réobservation et adaptation sans repartir de zéro ;
 - envoi externe bloqué jusqu’à validation ;
 - CAPTCHA ou avertissement de plateforme : mission suspendue ;
+- fermeture puis réouverture du panneau : checkpoint proposé ;
 - arrêt immédiat : aucune action suivante exécutée.
 
-## Limitations assumées de la version 1.0
+## Limites assumées de la version 1.1
 
-- le mot d’activation fonctionne lorsque le panneau Neptune reste ouvert ;
-- la reconnaissance vocale dépend du service disponible dans Chrome ;
+- le mot d’activation fonctionne tant que le panneau Neptune reste ouvert ;
+- la reconnaissance et la synthèse vocales dépendent des services disponibles dans Chrome et le système ;
 - l’intelligence locale dépend de la compatibilité Chrome et matérielle du poste ;
 - aucun scraping massif ou envoi en volume n’est inclus ;
-- aucune logique de furtivité ou d’anti-détection n’est développée.
+- aucune logique de furtivité ou d’anti-détection n’est développée ;
+- une recette réelle sur les plateformes prioritaires reste nécessaire avant diffusion commerciale générale.
 
 Voir également :
 
