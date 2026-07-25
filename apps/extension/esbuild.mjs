@@ -51,6 +51,7 @@ const options = {
     "service-worker": path.join(root, "src/service-worker.ts"),
     "content-script": path.join(root, "src/content-script.ts"),
     "sidepanel": path.join(root, "src/sidepanel-entry.ts"),
+    "offscreen-wake": path.join(root, "src/offscreen-wake.ts"),
     "webllm-worker": path.join(root, "src/webllm-worker.ts"),
     "piper-voice-worker": path.join(root, "src/piper-voice-worker.ts")
   },
