@@ -112,7 +112,7 @@ export async function prepareLocalVoice(
   voiceId: string,
   onProgress?: (progress: number, detail: string) => void
 ): Promise<void> {
-  const available = await getAvailableLocalVoiceIds().catch(() => []);
+  const available: string[] = await getAvailableLocalVoiceIds().catch((): string[] => []);
   if (available.length > 0 && !available.includes(voiceId)) {
     throw new Error("Cette voix française n’est pas disponible dans le catalogue local installé.");
   }
