@@ -123,14 +123,24 @@ jobs:
           test -f apps/extension/dist/voices/fr_FR-siwis-medium.onnx.json
           test -f apps/extension/dist/voices/fr_FR-tom-medium.onnx
           test -f apps/extension/dist/voices/fr_FR-tom-medium.onnx.json
+          test -f apps/extension/dist/voices/runtime/piper_phonemize.data
+          test -f apps/extension/dist/voices/runtime/piper_phonemize.wasm
+          test -f apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.mjs
+          test -f apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.wasm
+          test -s apps/extension/dist/voices/runtime/piper_phonemize.data
+          test -s apps/extension/dist/voices/runtime/piper_phonemize.wasm
+          test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.mjs
+          test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.wasm
           test -f apps/extension/src/neptune-app.ts
           test -f apps/extension/src/product-config.ts
+          test -f apps/extension/src/product-config.test.ts
           grep -q "planAgentStep" apps/extension/src/neptune-app.ts
           grep -q "current-tab" apps/extension/src/service-worker.ts
           grep -q "new-window" apps/extension/src/service-worker.ts
           grep -q "Qwen2.5-1.5B" apps/extension/src/product-config.ts
           grep -q "fr_FR-siwis-medium" apps/extension/src/piper-voice-worker.ts
           grep -q "fr_FR-tom-medium" apps/extension/src/piper-voice-worker.ts
+          grep -q "voices/runtime" apps/extension/dist/piper-voice-worker.js
           grep -q "USER_MEDIA" apps/extension/src/service-worker.ts
           grep -q "BACKGROUND_WAKE_TRANSCRIPT" apps/extension/src/offscreen-wake.ts
           if grep -q "voice-hub-overlay\|model-hub-overlay\|agentic-sidepanel" apps/extension/src/sidepanel-entry.ts; then
@@ -139,6 +149,10 @@ jobs:
           fi
           if find apps/extension/dist -name '*.map' -print -quit | grep -q .; then
             echo "Source maps must not ship in the production package."
+            exit 1
+          fi
+          if grep -E "cdn\.jsdelivr\.net/npm/@diffusionstudio/piper-wasm|cdnjs\.cloudflare\.com/ajax/libs/onnxruntime-web" apps/extension/dist/piper-voice-worker.js; then
+            echo "The packaged voice runtime still depends on a remote CDN."
             exit 1
           fi
           if grep -R -n -E "Neptune Runtime|127\.0\.0\.1:8787|Jeton API Neptune|nativeMessaging" apps/extension/dist; then
