@@ -1,5 +1,5 @@
 import { build, context } from "esbuild";
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
 const watch = process.argv.includes("--watch");
@@ -46,11 +46,27 @@ const browserNodeBuiltinPlugin = {
   }
 };
 
+const embeddedPiperRuntimePlugin = {
+  name: "embedded-piper-runtime",
+  setup(buildContext) {
+    buildContext.onLoad({ filter: /\.js$/ }, async (args) => {
+      const normalized = args.path.replaceAll("\\", "/");
+      if (!normalized.includes("@mintplex-labs/piper-tts-web")) return null;
+      let contents = await readFile(args.path, "utf8");
+      contents = contents
+        .replace(/["']https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/onnxruntime-web\/1\.18\.0\/["']/g, 'chrome.runtime.getURL("voices/runtime/")')
+        .replace(/["']https:\/\/cdn\.jsdelivr\.net\/npm\/@diffusionstudio\/piper-wasm@1\.0\.0\/build\/piper_phonemize["']/g, 'chrome.runtime.getURL("voices/runtime/piper_phonemize")');
+      return { loader: "js", contents };
+    });
+  }
+};
+
 const options = {
   entryPoints: {
     "service-worker": path.join(root, "src/service-worker.ts"),
     "content-script": path.join(root, "src/content-script.ts"),
     "sidepanel": path.join(root, "src/sidepanel-entry.ts"),
+    "offscreen-wake": path.join(root, "src/offscreen-wake.ts"),
     "webllm-worker": path.join(root, "src/webllm-worker.ts"),
     "piper-voice-worker": path.join(root, "src/piper-voice-worker.ts")
   },
@@ -64,7 +80,7 @@ const options = {
   legalComments: "eof",
   treeShaking: true,
   logLevel: "info",
-  plugins: [browserNodeBuiltinPlugin]
+  plugins: [browserNodeBuiltinPlugin, embeddedPiperRuntimePlugin]
 };
 
 if (watch) {
