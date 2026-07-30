@@ -48,7 +48,7 @@ try {
   await cdp.connect();
   await cdp.send("Runtime.enable");
   await cdp.send("Page.enable");
-  await waitFor(cdp, `document.readyState === "complete" && Boolean(document.querySelector("#preferred-name"))`, 30_000);
+  await ensureOnboardingLoaded(cdp, startupUrl);
 
   assert(await evaluate(cdp, `document.querySelector("button[data-action='onboarding-next']").disabled === true`), "Continue must start disabled");
   await evaluate(cdp, `(() => { const input = document.querySelector("#preferred-name"); input.value = "Johan"; input.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
@@ -126,6 +126,24 @@ async function waitForExtensionTarget(port, expectedUrl) {
     await delay(100);
   }
   throw new Error("Timed out waiting for the Neptune extension page target");
+}
+
+async function ensureOnboardingLoaded(cdp, url) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) {
+      await cdp.send("Page.navigate", { url });
+      await delay(500);
+    }
+    try {
+      await waitFor(cdp, `document.readyState === "complete" && Boolean(document.querySelector("#preferred-name"))`, 20_000);
+      return;
+    } catch (error) {
+      if (attempt === 1) {
+        const diagnostic = await evaluate(cdp, `({ href: location.href, title: document.title, body: document.body?.innerText?.slice(0, 1000) ?? "", html: document.documentElement?.outerHTML?.slice(0, 2000) ?? "" })`).catch(() => ({}));
+        throw new Error(`Neptune onboarding did not load: ${JSON.stringify(diagnostic)}; ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
 }
 
 function createCdpClient(url) {
