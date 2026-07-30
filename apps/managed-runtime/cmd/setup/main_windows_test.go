@@ -149,6 +149,7 @@ func TestInstallerShipsNoTechWPFExperience(t *testing.T) {
 		"Ajouter Neptune à Chrome",
 		"latest-error.log",
 		"CreateNoWindow = $true",
+		"UninstallSource",
 	} {
 		if !strings.Contains(ui, required) {
 			t.Fatalf("GUI installer is missing the no-tech contract: %s", required)
@@ -156,6 +157,28 @@ func TestInstallerShipsNoTechWPFExperience(t *testing.T) {
 	}
 	if strings.Contains(ui, "chrome://extensions") || strings.Contains(ui, "Mode développeur") {
 		t.Fatal("the customer installer must not ask users to load an unpacked extension")
+	}
+}
+
+func TestInstallerEmbedsAndRegistersUninstaller(t *testing.T) {
+	uninstaller, err := payload.ReadFile("payload/NeptuneUninstall.exe")
+	if err != nil {
+		t.Fatalf("read embedded uninstaller: %v", err)
+	}
+	if len(uninstaller) < 100_000 || !bytes.HasPrefix(uninstaller, []byte{'M', 'Z'}) {
+		t.Fatal("embedded NeptuneUninstall.exe is missing or invalid")
+	}
+	installer := readPayload(t, "payload/install.ps1")
+	for _, required := range []string{
+		"UninstallSource",
+		"NeptuneUninstall.exe",
+		"CurrentVersion\\Uninstall\\Neptune",
+		"QuietUninstallString",
+		"Neptune Business Club",
+	} {
+		if !strings.Contains(installer, required) {
+			t.Fatalf("installer is missing uninstall registration: %s", required)
+		}
 	}
 }
 
