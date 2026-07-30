@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const runtimeVersion = "1.8.0"
+const runtimeVersion = "2.0.0"
 
 type request struct {
 	RequestID     string `json:"requestId"`
@@ -87,8 +87,8 @@ func handleStatus(req request) {
 		_ = writeNativeMessage(response{RequestID: req.RequestID, Kind: "status", Code: "NOT_INSTALLED", Detail: "Le moteur Neptune n’est pas installé."})
 		return
 	}
-	if err := verifyHermes(cfg, 2*time.Second); err != nil {
-		_ = writeNativeMessage(response{RequestID: req.RequestID, Kind: "status", Code: "STOPPED", Detail: "Hermes est installé mais arrêté."})
+	if err := verifyRuntime(cfg, 2*time.Second); err != nil {
+		_ = writeNativeMessage(response{RequestID: req.RequestID, Kind: "status", Code: "STOPPED", Detail: "Le moteur Neptune est installé mais arrêté."})
 		return
 	}
 	_ = writeReady(req.RequestID, cfg)
@@ -99,7 +99,7 @@ func handleEnsure(req request, repair bool) {
 	if repair {
 		phase = "repairing"
 	}
-	_ = writeProgress(req.RequestID, phase, 4, "Vérification du moteur Hermes intégré…")
+	_ = writeProgress(req.RequestID, phase, 4, "Vérification du moteur Neptune…")
 
 	cfg, err := loadConnection()
 	if err != nil {
@@ -107,17 +107,17 @@ func handleEnsure(req request, repair bool) {
 			RequestID: req.RequestID,
 			Kind:      "error",
 			Code:      "RUNTIME_NOT_INSTALLED",
-			Detail:    "Le moteur Neptune n’est pas installé. Lancez NeptuneSetup.exe une seule fois.",
+			Detail:    "Le moteur Neptune n’est pas installé. Relancez NeptuneSetup.exe une seule fois.",
 		})
 		return
 	}
 
-	if !repair && verifyHermes(cfg, 2*time.Second) == nil {
+	if !repair && verifyRuntime(cfg, 2*time.Second) == nil {
 		_ = writeReady(req.RequestID, cfg)
 		return
 	}
 
-	_ = writeProgress(req.RequestID, "starting-model", 18, "Démarrage du modèle local…")
+	_ = writeProgress(req.RequestID, "starting-model", 18, "Démarrage de l’intelligence locale…")
 	if err := launchRuntime(repair); err != nil {
 		_ = writeNativeMessage(response{RequestID: req.RequestID, Kind: "error", Code: "START_FAILED", Detail: err.Error()})
 		return
@@ -126,8 +126,8 @@ func handleEnsure(req request, repair bool) {
 	deadline := time.Now().Add(6 * time.Minute)
 	progress := 24
 	for time.Now().Before(deadline) {
-		if verifyHermes(cfg, 3*time.Second) == nil {
-			_ = writeProgress(req.RequestID, "verifying", 96, "Validation de la mémoire et des compétences Hermes…")
+		if verifyRuntime(cfg, 3*time.Second) == nil {
+			_ = writeProgress(req.RequestID, "verifying", 96, "Validation de la mémoire et des outils Neptune…")
 			_ = writeReady(req.RequestID, cfg)
 			return
 		}
@@ -135,17 +135,17 @@ func handleEnsure(req request, repair bool) {
 		if progress > 92 {
 			progress = 92
 		}
-		detail := "Hermes initialise ses outils…"
+		detail := "Neptune initialise ses outils…"
 		if progress < 55 {
-			detail = "Chargement du cerveau local…"
+			detail = "Chargement de l’intelligence locale…"
 		} else if progress < 78 {
-			detail = "Démarrage de la mémoire Hermes…"
+			detail = "Démarrage de la mémoire Neptune…"
 		}
 		_ = writeProgress(req.RequestID, "starting-hermes", progress, detail)
 		time.Sleep(2 * time.Second)
 	}
 
-	_ = writeNativeMessage(response{RequestID: req.RequestID, Kind: "error", Code: "START_TIMEOUT", Detail: "Hermes n’a pas terminé son démarrage. Utilisez Réparer Neptune depuis les réglages."})
+	_ = writeNativeMessage(response{RequestID: req.RequestID, Kind: "error", Code: "START_TIMEOUT", Detail: "Neptune n’a pas terminé son démarrage. Utilisez Diagnostiquer et réparer Neptune dans les réglages."})
 }
 
 func runtimeRoot() (string, error) {
@@ -167,13 +167,13 @@ func loadConnection() (connection, error) {
 	}
 	var cfg connection
 	if err := json.Unmarshal(content, &cfg); err != nil {
-		return connection{}, fmt.Errorf("configuration Hermes illisible: %w", err)
+		return connection{}, fmt.Errorf("configuration Neptune illisible: %w", err)
 	}
 	cfg.Endpoint = strings.TrimRight(strings.TrimSpace(cfg.Endpoint), "/")
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
 	cfg.Model = strings.TrimSpace(cfg.Model)
 	if !strings.HasPrefix(cfg.Endpoint, "http://127.0.0.1:") || len(cfg.APIKey) < 24 || cfg.Model == "" {
-		return connection{}, errors.New("configuration Hermes incomplète")
+		return connection{}, errors.New("configuration Neptune incomplète")
 	}
 	return cfg, nil
 }
@@ -185,7 +185,7 @@ func launchRuntime(repair bool) error {
 	}
 	script := filepath.Join(root, "start-runtime.ps1")
 	if _, err := os.Stat(script); err != nil {
-		return errors.New("le lanceur Hermes est absent ; relancez NeptuneSetup.exe")
+		return errors.New("le lanceur Neptune est absent ; relancez NeptuneSetup.exe")
 	}
 	args := []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script}
 	if repair {
@@ -195,12 +195,12 @@ func launchRuntime(repair bool) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x08000000}
 	cmd.Dir = root
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("impossible de lancer Hermes: %w", err)
+		return fmt.Errorf("impossible de lancer Neptune: %w", err)
 	}
 	return nil
 }
 
-func verifyHermes(cfg connection, timeout time.Duration) error {
+func verifyRuntime(cfg connection, timeout time.Duration) error {
 	client := &http.Client{Timeout: timeout}
 	req, err := http.NewRequest(http.MethodGet, cfg.Endpoint+"/health", nil)
 	if err != nil {
@@ -213,7 +213,7 @@ func verifyHermes(cfg connection, timeout time.Duration) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Hermes répond HTTP %d", resp.StatusCode)
+		return fmt.Errorf("le moteur local répond HTTP %d", resp.StatusCode)
 	}
 	return nil
 }
@@ -228,7 +228,7 @@ func writeReady(requestID string, cfg connection) error {
 		Kind:           "ready",
 		Phase:          "ready",
 		Progress:       100,
-		Detail:         "Hermes est prêt.",
+		Detail:         "Neptune est prêt.",
 		Endpoint:       cfg.Endpoint,
 		APIKey:         cfg.APIKey,
 		Model:          cfg.Model,
