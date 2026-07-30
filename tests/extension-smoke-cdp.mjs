@@ -66,12 +66,21 @@ try {
   await waitFor(cdp, `document.body.innerText.includes("Préférez-vous une voix féminine ou masculine")`, 10_000);
 
   await evaluate(cdp, `document.querySelector("button[data-action='preview-gender'][data-value='female']").click()`);
+  await waitForPlayback(cdp, "fr_FR-siwis-medium", 120_000);
   await waitForAudit(cdp, "Voix féminine", 120_000);
   await assertNoVoiceFailure(cdp, exceptions, consoleErrors, "female");
 
   await evaluate(cdp, `document.querySelector("button[data-action='preview-gender'][data-value='male']").click()`);
+  await waitForPlayback(cdp, "fr_FR-upmc-medium", 120_000);
   await waitForAudit(cdp, "Voix masculine", 120_000);
   await assertNoVoiceFailure(cdp, exceptions, consoleErrors, "male");
+
+  await evaluate(cdp, `document.querySelector("button[data-action='onboarding-next']").click()`);
+  await waitFor(cdp, `document.body.innerText.includes("Dites « Neptune » ou « OK Neptune »")`, 10_000);
+  await evaluate(cdp, `document.querySelector("button[data-action='test-activation']").click()`);
+  await delay(1_500);
+  const permissionText = await evaluate(cdp, `document.body.innerText`);
+  assert(!/Permission dismissed/i.test(permissionText), "The microphone flow exposed the raw Permission dismissed error");
 
   const stopState = await evaluate(cdp, `(async () => {
     await chrome.runtime.sendMessage({ type: "START_MISSION", workspaceMode: "new-tab" });
@@ -83,7 +92,11 @@ try {
 
   const browserCdp = createCdpClient(await getBrowserWebSocketUrl(port));
   await browserCdp.connect();
-  await browserCdp.send("Target.closeTarget", { targetId: extensionTarget.id });
+  try {
+    await browserCdp.send("Target.closeTarget", { targetId: extensionTarget.id });
+  } catch (error) {
+    if (!/No target with given id found/i.test(error instanceof Error ? error.message : String(error))) throw error;
+  }
   await waitForTargetGone(port, extensionTarget.id, 10_000);
   await browserCdp.close();
 
@@ -97,7 +110,7 @@ try {
   })()`, 15_000);
 
   await cdp.close();
-  console.log(`Neptune Chromium smoke test passed with both voices and durable stop state for extension ${extensionId}.`);
+  console.log(`Neptune Chromium smoke test passed with audible premium voices, guarded microphone flow and durable stop state for extension ${extensionId}.`);
 } catch (error) {
   console.error(chromeOutput.slice(-8_000));
   throw error;
@@ -200,6 +213,10 @@ async function waitForAudit(cdp, detail, timeoutMs) {
     const audit = Array.isArray(stored["neptune.audit.v2"]) ? stored["neptune.audit.v2"] : [];
     return audit.some((entry) => entry?.type === "VOICE_READY" && entry?.detail === ${JSON.stringify(detail)});
   })()`, timeoutMs);
+}
+
+async function waitForPlayback(cdp, voiceId, timeoutMs) {
+  await waitFor(cdp, `document.documentElement.dataset.neptuneVoiceId === ${JSON.stringify(voiceId)} && document.documentElement.dataset.neptuneVoicePlayback === "ended"`, timeoutMs);
 }
 
 async function assertNoVoiceFailure(cdp, exceptions, consoleErrors, label) {

@@ -6,11 +6,11 @@ import {
   voiceForGender
 } from "./product-config";
 
-describe("Neptune 1.5 product defaults", () => {
-  it("expose exactement une voix féminine et une voix masculine", () => {
+describe("Neptune product defaults", () => {
+  it("expose exactement une voix féminine et une voix masculine premium", () => {
     expect(Object.keys(PRODUCT_VOICES)).toEqual(["female", "male"]);
     expect(voiceForGender("female").id).toBe("fr_FR-siwis-medium");
-    expect(voiceForGender("male").id).toBe("fr_FR-tom-medium");
+    expect(voiceForGender("male").id).toBe("fr_FR-upmc-medium");
   });
 
   it("utilise le modèle local équilibré par défaut", () => {

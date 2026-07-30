@@ -1,4 +1,4 @@
-export const PRODUCT_VERSION = 16;
+export const PRODUCT_VERSION = 17;
 export const BALANCED_LOCAL_MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
 export const LOCAL_VOICE_PREFIX = "neptune-piper:";
 
@@ -11,14 +11,14 @@ export const PRODUCT_VOICES = {
     id: "fr_FR-siwis-medium",
     uri: `${LOCAL_VOICE_PREFIX}fr_FR-siwis-medium`,
     label: "Voix féminine",
-    description: "Naturelle, claire et chaleureuse"
+    description: "Claire, naturelle et chaleureuse"
   },
   male: {
     gender: "male" as const,
-    id: "fr_FR-tom-medium",
-    uri: `${LOCAL_VOICE_PREFIX}fr_FR-tom-medium`,
+    id: "fr_FR-upmc-medium",
+    uri: `${LOCAL_VOICE_PREFIX}fr_FR-upmc-medium`,
     label: "Voix masculine",
-    description: "Posée, profonde et professionnelle"
+    description: "Grave, fluide et professionnelle"
   }
 } as const;
 
