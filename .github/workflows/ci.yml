@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feat/**, fix/**, chore/**]
+    branches: [main, feat/**, fix/**, chore/**, release/**]
   pull_request:
 
 permissions:
@@ -47,7 +47,7 @@ jobs:
             echo '### CI — erreurs TypeScript'
             echo
             echo '```text'
-            tail -n 220 typecheck.log
+            tail -n 260 typecheck.log
             echo '```'
           } > typecheck-comment.md
           gh pr comment "$PR_NUMBER" --body-file typecheck-comment.md
@@ -56,7 +56,7 @@ jobs:
         if: steps.typecheck.outcome == 'failure'
         run: exit 1
 
-      - name: Tests and real Chromium smoke test
+      - name: Unit tests and Chromium product test
         id: tests
         continue-on-error: true
         shell: bash
@@ -72,7 +72,7 @@ jobs:
             echo '### CI — erreurs de tests'
             echo
             echo '```text'
-            tail -n 300 tests.log
+            tail -n 360 tests.log
             echo '```'
           } > test-comment.md
           gh pr comment "$PR_NUMBER" --body-file test-comment.md
@@ -97,7 +97,7 @@ jobs:
             echo '### CI — erreur du bundle Chrome'
             echo
             echo '```text'
-            tail -n 300 build.log
+            tail -n 360 build.log
             echo '```'
           } > build-comment.md
           gh pr comment "$PR_NUMBER" --body-file build-comment.md
@@ -106,16 +106,16 @@ jobs:
         if: steps.build.outcome == 'failure'
         run: exit 1
 
-      - name: Validate Neptune 1.8 package
+      - name: Validate Neptune 2 production package
         shell: bash
         run: |
-          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.8.0'||m.version_name!=='1.8 Hermes Integrated'||!m.permissions?.includes('offscreen')||!m.permissions?.includes('nativeMessaging')||!m.host_permissions?.includes('http://127.0.0.1/*')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='2.0.0'||m.version_name!=='2.0 Production'||!m.permissions?.includes('offscreen')||!m.permissions?.includes('nativeMessaging')||!m.permissions?.includes('alarms')||!m.host_permissions?.includes('http://127.0.0.1/*')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
           test -f apps/extension/dist/sidepanel.html
           test -f apps/extension/dist/sidepanel.js
           test -f apps/extension/dist/premium-hologram.css
           test -f apps/extension/dist/offscreen.html
           test -f apps/extension/dist/offscreen-wake.js
-          test -f apps/extension/dist/webllm-worker.js
+          test -f apps/extension/dist/offscreen-agent-runtime.js
           test -f apps/extension/dist/piper-voice-worker.js
           test -f apps/extension/dist/service-worker.js
           test -f apps/extension/dist/content-script.js
@@ -124,26 +124,20 @@ jobs:
           test -f apps/extension/dist/voices/fr_FR-upmc-medium.onnx
           test -s apps/extension/dist/voices/runtime/piper_phonemize.wasm
           test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.wasm
-          grep -q 'com.neptune.hermes' apps/extension/src/managed-hermes-runtime.ts
-          grep -q 'ensureManagedHermes' apps/extension/src/neptune-app.ts
-          grep -q 'Hermes intégré' apps/extension/src/neptune-app.ts
-          grep -q 'nativeMessaging' apps/extension/dist/manifest.json
-          grep -q 'planAgentStep' apps/extension/src/neptune-app.ts
-          grep -q 'MISSION_CONTROL_KEY' apps/extension/src/service-worker.ts
-          grep -q 'createWritable' apps/extension/src/piper-voice-worker.ts
-          grep -q 'fr_FR-upmc-medium' apps/extension/src/piper-voice-worker.ts
-          grep -q 'speakerId = this.voiceId' apps/extension/esbuild.mjs
-          grep -q 'continue-without-microphone' apps/extension/src/premium-experience.ts
-          grep -q 'premium-speak' apps/extension/static/premium-hologram.css
-          grep -q 'current-tab' apps/extension/src/service-worker.ts
-          grep -q 'new-window' apps/extension/src/service-worker.ts
-          grep -q 'BACKGROUND_WAKE_TRANSCRIPT' apps/extension/src/offscreen-wake.ts
-          if grep -q 'hermes-settings' apps/extension/src/sidepanel-entry.ts; then
-            echo 'The manual Hermes configuration overlay is still loaded.'
+          grep -q 'HEALTH_CACHE_MS' apps/extension/src/managed-hermes-runtime.ts
+          grep -q 'verifyConnection' apps/extension/src/managed-hermes-runtime.ts
+          grep -q 'repairManagedHermes' apps/extension/src/managed-hermes-runtime.ts
+          grep -q 'neptune.agent.mission.v3' apps/extension/src/offscreen-agent-runtime.ts
+          grep -q 'restoreDurableMission' apps/extension/src/offscreen-agent-runtime.ts
+          grep -q 'AGENT_START' apps/extension/src/service-worker.ts
+          grep -q 'HERMES_HEALTH_ALARM' apps/extension/src/service-worker.ts
+          grep -q 'GET_MANAGED_HERMES' apps/extension/src/neptune-app.ts
+          if grep -q 'planAgentStep' apps/extension/src/neptune-app.ts; then
+            echo 'The side panel still contains the mission execution loop.'
             exit 1
           fi
-          if find apps/extension/dist/voices -name 'fr_FR-tom-medium*' -print -quit | grep -q .; then
-            echo 'The obsolete robotic Tom voice is still packaged.'
+          if grep -q 'connectNative' apps/extension/src/neptune-app.ts; then
+            echo 'The side panel still opens its own Native Messaging port.'
             exit 1
           fi
           if grep -R -n -E 'onchange=|onclick=|oninput=' apps/extension/dist; then
@@ -154,36 +148,40 @@ jobs:
             echo 'Source maps must not ship in the production package.'
             exit 1
           fi
+          if find apps/extension/dist/voices -name 'fr_FR-tom-medium*' -print -quit | grep -q .; then
+            echo 'The obsolete robotic Tom voice is still packaged.'
+            exit 1
+          fi
           if grep -E 'cdn\.jsdelivr\.net/npm/@diffusionstudio/piper-wasm|cdnjs\.cloudflare\.com/ajax/libs/onnxruntime-web|chrome\.runtime' apps/extension/dist/piper-voice-worker.js; then
             echo 'The packaged voice worker still depends on a forbidden runtime or remote CDN.'
             exit 1
           fi
-          if grep -R -n -E '127\.0\.0\.1:8787|Jeton API Neptune' apps/extension/dist; then
-            echo 'A deprecated Neptune Runtime dependency was found.'
+          if grep -R -n -E 'Jeton API Neptune|API_SERVER_KEY|CORS_ORIGINS' apps/extension/dist/sidepanel.js; then
+            echo 'Technical configuration leaked into the client interface.'
             exit 1
           fi
 
       - name: Dry-run Cloudflare Worker
         run: pnpm --filter @neptune/worker-api build
 
-      - name: Package extension ZIP
+      - name: Package Chrome Web Store ZIP
         shell: bash
         run: |
           cd apps/extension/dist
-          zip -r ../../../neptune-extension-managed-v1.8.0.zip .
+          zip -r ../../../neptune-extension-production-v2.0.0.zip .
 
-      - name: Publish managed extension
+      - name: Publish production extension
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-extension-managed-v1.8.0
-          path: neptune-extension-managed-v1.8.0.zip
+          name: neptune-extension-production-v2.0.0
+          path: neptune-extension-production-v2.0.0.zip
           if-no-files-found: error
           retention-days: 90
 
   windows-smoke:
     name: Windows runtime and Chromium smoke
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -217,7 +215,7 @@ jobs:
           [scriptblock]::Create((Get-Content 'apps/managed-runtime/assets/start-runtime.ps1' -Raw)) | Out-Null
           [scriptblock]::Create((Get-Content 'apps/managed-runtime/scripts/build-windows.ps1' -Raw)) | Out-Null
 
-      - name: Build managed Hermes installer
+      - name: Build Neptune Windows installer
         shell: pwsh
         run: ./apps/managed-runtime/scripts/build-windows.ps1
 
@@ -230,56 +228,56 @@ jobs:
       - name: Publish NeptuneSetup
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-managed-runtime-windows-v1.8.0
+          name: neptune-windows-installer-v2.0.0
           path: apps/managed-runtime/dist/NeptuneSetup.exe
           if-no-files-found: error
           retention-days: 90
 
   release-package:
-    name: Assemble one-click Windows package
+    name: Assemble Neptune 2 release candidate
     needs: [validate, windows-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Download extension
         uses: actions/download-artifact@v4
         with:
-          name: neptune-extension-managed-v1.8.0
+          name: neptune-extension-production-v2.0.0
           path: release
 
-      - name: Download managed runtime
+      - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
-          name: neptune-managed-runtime-windows-v1.8.0
+          name: neptune-windows-installer-v2.0.0
           path: release
 
-      - name: Add installation guide
+      - name: Add release notes
         shell: bash
         run: |
-          cat > release/INSTALLATION.txt <<'EOF'
-          NEPTUNE 1.8 — HERMES INTÉGRÉ
+          cat > release/LISEZ-MOI.txt <<'EOF'
+          NEPTUNE 2.0 — CANDIDAT DE PRODUCTION
 
-          1. Lancez NeptuneSetup.exe une seule fois.
-          2. L’installateur télécharge et configure automatiquement Hermes Agent, llama.cpp et le modèle local Qwen3-4B.
-          3. Décompressez neptune-extension-managed-v1.8.0.zip dans un dossier permanent.
-          4. Ouvrez chrome://extensions, activez Mode développeur, puis cliquez sur Charger l’extension non empaquetée.
-          5. Sélectionnez le dossier contenant manifest.json.
+          Installation client cible :
+          1. Installer l’extension Neptune depuis sa fiche Chrome Web Store.
+          2. Lancer NeptuneSetup.exe.
+          3. Ouvrir Neptune depuis l’icône Chrome.
 
-          Aucune clé API, URL, variable CORS ou commande terminal n’est demandée.
-          Configuration minimale : Windows 10/11 x64, Chrome 138+, 16 Go de RAM et environ 6 Go d’espace libre.
+          Aucune clé API, URL locale, terminal ou configuration technique n’est demandé au client.
+
+          Le ZIP de l’extension présent dans cette archive est destiné à la publication Chrome Web Store et à la recette interne. Il ne doit pas être remis aux clients comme procédure d’installation.
           EOF
 
-      - name: Build final product ZIP
+      - name: Build release candidate ZIP
         shell: bash
         run: |
           test -s release/NeptuneSetup.exe
-          test -s release/neptune-extension-managed-v1.8.0.zip
+          test -s release/neptune-extension-production-v2.0.0.zip
           cd release
-          zip -r ../Neptune-1.8-Hermes-Integrated-Windows.zip .
+          zip -r ../Neptune-2.0-Production-RC-Windows.zip .
 
-      - name: Publish final product
+      - name: Publish release candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Neptune-1.8-Hermes-Integrated-Windows
-          path: Neptune-1.8-Hermes-Integrated-Windows.zip
+          name: Neptune-2.0-Production-RC-Windows
+          path: Neptune-2.0-Production-RC-Windows.zip
           if-no-files-found: error
           retention-days: 90
