@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
@@ -79,8 +80,8 @@ try {
   console.error(chromeOutput.slice(-8_000));
   throw error;
 } finally {
-  chrome.kill("SIGKILL");
-  await rm(userDataDir, { recursive: true, force: true });
+  await stopProcess(chrome);
+  await removeDirectoryWithRetry(userDataDir);
 }
 
 function findChrome() {
@@ -181,6 +182,31 @@ async function waitFor(cdp, expression, timeoutMs) {
     await delay(100);
   }
   throw new Error(`Timed out waiting for: ${expression}`);
+}
+
+async function stopProcess(processHandle) {
+  if (processHandle.exitCode !== null) return;
+  const exited = once(processHandle, "exit");
+  processHandle.kill("SIGTERM");
+  const graceful = await Promise.race([exited.then(() => true), delay(3_000).then(() => false)]);
+  if (graceful || processHandle.exitCode !== null) return;
+  const killed = once(processHandle, "exit");
+  processHandle.kill("SIGKILL");
+  await Promise.race([killed, delay(3_000)]);
+}
+
+async function removeDirectoryWithRetry(directory) {
+  let lastError;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      return;
+    } catch (error) {
+      lastError = error;
+      await delay(150 * (attempt + 1));
+    }
+  }
+  throw lastError;
 }
 
 function assert(condition, message) {
