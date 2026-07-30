@@ -20,7 +20,7 @@ var payload embed.FS
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 const (
-	chromeStoreURL       = "https://chromewebstore.google.com/detail/neptune/mhjkecpebpekcdbnhfmdiemlkfaafidh"
+	chromeStoreURL        = "https://chromewebstore.google.com/detail/neptune/mhjkecpebpekcdbnhfmdiemlkfaafidh"
 	windowsCreateNoWindow = 0x08000000
 )
 
@@ -60,9 +60,10 @@ func run() error {
 
 	files := map[string]string{
 		"payload/NeptuneHermesHost.exe": "NeptuneHermesHost.exe",
-		"payload/install.ps1":          "install.ps1",
-		"payload/start-runtime.ps1":    "start-runtime.ps1",
-		"payload/installer-ui.ps1":     "installer-ui.ps1",
+		"payload/NeptuneUninstall.exe":  "NeptuneUninstall.exe",
+		"payload/install.ps1":           "install.ps1",
+		"payload/start-runtime.ps1":     "start-runtime.ps1",
+		"payload/installer-ui.ps1":      "installer-ui.ps1",
 	}
 	for source, name := range files {
 		content, readErr := payload.ReadFile(source)
@@ -81,6 +82,7 @@ func run() error {
 	ui := filepath.Join(temporary, "installer-ui.ps1")
 	script := filepath.Join(temporary, "install.ps1")
 	host := filepath.Join(temporary, "NeptuneHermesHost.exe")
+	uninstaller := filepath.Join(temporary, "NeptuneUninstall.exe")
 	starter := filepath.Join(temporary, "start-runtime.ps1")
 	cmd := exec.Command("powershell.exe",
 		"-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-WindowStyle", "Hidden",
@@ -88,6 +90,7 @@ func run() error {
 		"-InstallScript", script,
 		"-HostSource", host,
 		"-StartScriptSource", starter,
+		"-UninstallSource", uninstaller,
 		"-StoreUrl", chromeStoreURL,
 		"-SetupPath", executable,
 	)
