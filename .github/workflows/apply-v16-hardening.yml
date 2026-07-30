@@ -20,7 +20,20 @@ jobs:
         with:
           node-version: 22
       - name: Repair migration template
-        run: node scripts/fix-v16-migration-template.mjs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-v16-hardening.mjs')
+          lines = path.read_text().splitlines(True)
+          changed = False
+          for index, line in enumerate(lines):
+              if 'LOCAL_BRAIN_FALLBACK' in line:
+                  lines[index] = '      appendAudit("LOCAL_BRAIN_FALLBACK", `\\${modelId}: \\${errorMessage(error)}`);\n'
+                  changed = True
+          if not changed:
+              raise SystemExit('LOCAL_BRAIN_FALLBACK line not found')
+          path.write_text(''.join(lines))
+          PY
       - name: Apply source hardening
         run: node scripts/apply-v16-hardening.mjs
       - name: Keep the workflow graph stable
