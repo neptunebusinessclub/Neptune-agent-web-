@@ -37,8 +37,9 @@
   <h2>Hermes Agent optionnel</h2>
   <p>Lorsque l’utilisateur connecte Hermes Agent, les messages nécessaires à la réponse sont transmis directement au serveur Hermes configuré. Ce serveur peut être local à l’ordinateur ou auto-hébergé. Neptune n’envoie pas ces messages à un autre serveur Hermes.</p>
   <p>Hermes peut utiliser sa mémoire, ses compétences et les outils activés dans sa propre configuration. Ces outils s’exécutent sur la machine ou le serveur qui héberge Hermes, et non dans l’onglet Chrome contrôlé par Neptune.</p>
-  <p>Pour les actions dans le navigateur local, Neptune privilégie son planificateur local. Si un repli vers Hermes est nécessaire, le contexte de page est envoyé dans une session de planification isolée avec instruction de ne pas utiliser les outils Hermes ni écrire en mémoire.</p>
-  <p>La clé <code>API_SERVER_KEY</code> est stockée chiffrée dans le profil Chrome. Les identifiants de continuité de session permettent à Hermes de retrouver le contexte associé à Neptune ; ils peuvent être renouvelés depuis les paramètres avancés.</p>
+  <p>Les observations et le contenu structuré de l’onglet de travail ne sont pas transmis aux outils Hermes. La planification des actions dans le navigateur local reste assurée par le cerveau local de Neptune ; si ce moteur n’est pas disponible, la mission navigateur est mise en pause au lieu d’envoyer la page à Hermes.</p>
+  <p>Les réponses Hermes sont reçues en flux. L’arrêt de Neptune ferme ce flux afin que le serveur Hermes puisse interrompre l’agent et ses appels d’outils.</p>
+  <p>La clé <code>API_SERVER_KEY</code> est stockée chiffrée dans le profil Chrome uniquement après une connexion réussie. Les identifiants de continuité de session permettent à Hermes de retrouver le contexte associé à Neptune ; ils peuvent être renouvelés depuis les paramètres avancés.</p>
 
   <h2>Activation vocale</h2>
   <p>La permission microphone est demandée uniquement après une action explicite de l’utilisateur. Après autorisation, Neptune peut écouter les expressions « Neptune » et « OK Neptune » lorsque Chrome reste ouvert.</p>
