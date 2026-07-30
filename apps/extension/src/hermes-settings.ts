@@ -13,10 +13,13 @@ const PREFERENCES_KEY = "neptune.preferences.v2";
 const CONNECTION_KEY = "neptune.hermes.connection.v1";
 const HERMES_DOCS = "https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/api-server.md";
 let mounting = false;
+let renderScheduled = false;
+let hermesSelected = false;
+let connectionState: Record<string, unknown> = {};
 
-const observer = new MutationObserver(() => void mountHermesControls());
+const observer = new MutationObserver(() => scheduleRefresh());
 observer.observe(document.documentElement, { childList: true, subtree: true });
-void mountHermesControls();
+void initializeHermesUi();
 
 window.addEventListener("neptune-hermes-status", (event) => {
   const detail = (event as CustomEvent<{ status?: string; detail?: string }>).detail;
@@ -25,8 +28,10 @@ window.addEventListener("neptune-hermes-status", (event) => {
 
 document.addEventListener("change", (event) => {
   const select = event.target as HTMLSelectElement | null;
-  if (select?.id !== "advanced-provider" || select.value !== "hermes") return;
-  window.setTimeout(() => void configureHermesFields(), 0);
+  if (select?.id !== "advanced-provider") return;
+  hermesSelected = select.value === "hermes";
+  scheduleRefresh();
+  if (hermesSelected) window.setTimeout(() => void configureHermesFields(), 0);
 });
 
 document.addEventListener("click", (event) => {
@@ -41,12 +46,31 @@ document.addEventListener("click", (event) => {
   if (action === "open-docs") void chrome.tabs.create({ url: HERMES_DOCS });
 }, true);
 
+async function initializeHermesUi(): Promise<void> {
+  const stored = await chrome.storage.local.get([PREFERENCES_KEY, CONNECTION_KEY]);
+  const preferences = isRecord(stored[PREFERENCES_KEY]) ? stored[PREFERENCES_KEY] : {};
+  connectionState = isRecord(stored[CONNECTION_KEY]) ? stored[CONNECTION_KEY] : {};
+  hermesSelected = preferences.providerId === "hermes";
+  await mountHermesControls();
+  refreshVisibleLabels();
+}
+
+function scheduleRefresh(): void {
+  if (renderScheduled) return;
+  renderScheduled = true;
+  queueMicrotask(() => {
+    renderScheduled = false;
+    refreshVisibleLabels();
+    void mountHermesControls();
+  });
+}
+
 async function mountHermesControls(): Promise<void> {
   if (mounting) return;
+  const providerSelect = document.querySelector<HTMLSelectElement>("#advanced-provider");
+  if (!providerSelect) return;
   mounting = true;
   try {
-    const providerSelect = document.querySelector<HTMLSelectElement>("#advanced-provider");
-    if (!providerSelect) return;
     if (!providerSelect.querySelector("option[value='hermes']")) {
       const option = document.createElement("option");
       option.value = "hermes";
@@ -56,17 +80,30 @@ async function mountHermesControls(): Promise<void> {
 
     const stored = await chrome.storage.local.get([PREFERENCES_KEY, CONNECTION_KEY]);
     const preferences = isRecord(stored[PREFERENCES_KEY]) ? stored[PREFERENCES_KEY] : {};
-    if (preferences.providerId === "hermes") providerSelect.value = "hermes";
+    connectionState = isRecord(stored[CONNECTION_KEY]) ? stored[CONNECTION_KEY] : connectionState;
+    hermesSelected = preferences.providerId === "hermes";
+    if (hermesSelected) providerSelect.value = "hermes";
 
     const advanced = providerSelect.closest<HTMLElement>(".settings-section.advanced");
-    if (!advanced || document.getElementById("neptune-hermes-card")) return;
-    const connection = isRecord(stored[CONNECTION_KEY]) ? stored[CONNECTION_KEY] : {};
-    advanced.insertAdjacentHTML("beforeend", hermesCardMarkup(connection));
-
-    if (preferences.providerId === "hermes") await configureHermesFields(false);
+    if (advanced && !document.getElementById("neptune-hermes-card")) {
+      advanced.insertAdjacentHTML("beforeend", hermesCardMarkup(connectionState));
+    }
+    if (hermesSelected) await configureHermesFields(false);
+    refreshVisibleLabels();
   } finally {
     mounting = false;
   }
+}
+
+function refreshVisibleLabels(): void {
+  if (!hermesSelected) return;
+  const composerBrain = document.querySelector<HTMLElement>(".composer-hint span:last-child");
+  if (composerBrain) composerBrain.textContent = "Hermes Agent";
+  const settingStatus = document.querySelector<HTMLElement>(".setting-status");
+  const name = settingStatus?.querySelector<HTMLElement>("strong");
+  const status = settingStatus?.querySelector<HTMLElement>("span");
+  if (name) name.textContent = "Hermes Agent — mémoire et compétences";
+  if (status) status.textContent = connectionState.status === "connected" ? "Connecté" : "À connecter";
 }
 
 async function configureHermesFields(dispatch = true): Promise<void> {
@@ -75,7 +112,7 @@ async function configureHermesFields(dispatch = true): Promise<void> {
   if (!endpoint || !model) return;
   const currentEndpoint = endpoint.value.trim();
   if (!currentEndpoint || /api\.mammouth\.ai/i.test(currentEndpoint)) endpoint.value = getHermesDefaultEndpoint();
-  if (!model.value.trim() || model.value === "mammouth-recommended") model.value = "hermes-agent";
+  if (!model.value.trim() || model.value === "mammouth-recommended" || /Qwen|Llama|Phi/i.test(model.value)) model.value = "hermes-agent";
   if (dispatch) {
     endpoint.dispatchEvent(new Event("input", { bubbles: true }));
     model.dispatchEvent(new Event("input", { bubbles: true }));
@@ -96,6 +133,7 @@ async function connectHermes(button: HTMLButtonElement): Promise<void> {
       providerSelect.dispatchEvent(new Event("change", { bubbles: true }));
       await delay(80);
     }
+    hermesSelected = true;
     await configureHermesFields();
 
     const endpointInput = document.querySelector<HTMLInputElement>("#provider-endpoint");
@@ -117,7 +155,7 @@ async function connectHermes(button: HTMLButtonElement): Promise<void> {
     endpointInput?.dispatchEvent(new Event("input", { bubbles: true }));
     modelInput?.dispatchEvent(new Event("input", { bubbles: true }));
 
-    const snapshot = {
+    connectionState = {
       status: "connected",
       endpoint: connection.endpoint,
       model: connection.model,
@@ -127,8 +165,9 @@ async function connectHermes(button: HTMLButtonElement): Promise<void> {
       runs: connection.capabilities.runs,
       connectedAt: new Date().toISOString()
     };
-    await chrome.storage.local.set({ [CONNECTION_KEY]: snapshot });
-    updateStatus("connected", connectionSummary(snapshot));
+    await chrome.storage.local.set({ [CONNECTION_KEY]: connectionState });
+    updateStatus("connected", connectionSummary(connectionState));
+    refreshVisibleLabels();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Connexion Hermes impossible.";
     updateStatus("error", message);
@@ -182,9 +221,10 @@ function corsSetting(): string {
 
 function updateStatus(status: string, detail: string): void {
   const element = document.getElementById("neptune-hermes-status");
-  if (!element) return;
-  element.className = `hermes-status ${status}`;
-  element.textContent = detail;
+  if (element) {
+    element.className = `hermes-status ${status}`;
+    element.textContent = detail;
+  }
 }
 
 function connectionSummary(connection: Record<string, unknown>): string {
