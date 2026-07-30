@@ -1,20 +1,23 @@
-import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+if (process.platform === "linux" && !process.env.DISPLAY && process.env.NEPTUNE_XVFB_CHILD !== "1") {
+  const xvfb = spawnSync("xvfb-run", ["-a", process.execPath, ...process.argv.slice(1)], {
+    stdio: "inherit",
+    env: { ...process.env, NEPTUNE_XVFB_CHILD: "1" }
+  });
+  process.exit(xvfb.status ?? 1);
+}
+
 const extensionPath = path.resolve("apps/extension/dist");
-const manifest = JSON.parse(await readFile(path.join(extensionPath, "manifest.json"), "utf8"));
-const extensionId = extensionIdFromKey(manifest.key);
 const userDataDir = await mkdtemp(path.join(os.tmpdir(), "neptune-cdp-"));
 const chromeBinary = findChrome();
-const startupUrl = `chrome-extension://${extensionId}/sidepanel.html`;
 
 const chrome = spawn(chromeBinary, [
-  "--headless=new",
   "--no-sandbox",
   "--disable-dev-shm-usage",
   "--remote-debugging-port=0",
@@ -24,8 +27,10 @@ const chrome = spawn(chromeBinary, [
   "--autoplay-policy=no-user-gesture-required",
   "--use-fake-ui-for-media-stream",
   "--use-fake-device-for-media-stream",
+  "--disable-component-update",
+  "--no-default-browser-check",
   "--no-first-run",
-  startupUrl
+  "about:blank"
 ], { stdio: ["ignore", "pipe", "pipe"] });
 
 let chromeOutput = "";
@@ -34,8 +39,11 @@ chrome.stderr.on("data", (chunk) => { chromeOutput += chunk.toString(); });
 
 try {
   const port = await waitForDevToolsPort(userDataDir, chrome);
-  const target = await waitForExtensionTarget(port, startupUrl);
-  const cdp = createCdpClient(target.webSocketDebuggerUrl);
+  const extensionTarget = await waitForExtensionWorker(port);
+  const extensionId = new URL(extensionTarget.url).host;
+  const startupUrl = `chrome-extension://${extensionId}/sidepanel.html`;
+  const pageTarget = await waitForPageTarget(port);
+  const cdp = createCdpClient(pageTarget.webSocketDebuggerUrl);
   const exceptions = [];
   const consoleErrors = [];
   cdp.on("Runtime.exceptionThrown", (params) => {
@@ -48,6 +56,7 @@ try {
   await cdp.connect();
   await cdp.send("Runtime.enable");
   await cdp.send("Page.enable");
+  await cdp.send("Page.navigate", { url: startupUrl });
   await ensureOnboardingLoaded(cdp, startupUrl);
 
   assert(await evaluate(cdp, `document.querySelector("button[data-action='onboarding-next']").disabled === true`), "Continue must start disabled");
@@ -75,7 +84,7 @@ try {
   assert(stopState, "Mission stop state is not persisted in chrome.storage.session");
 
   await cdp.close();
-  console.log("Neptune Chromium smoke test passed.");
+  console.log(`Neptune Chromium smoke test passed with extension ${extensionId}.`);
 } catch (error) {
   console.error(chromeOutput.slice(-8_000));
   throw error;
@@ -97,11 +106,6 @@ function findChrome() {
   return match;
 }
 
-function extensionIdFromKey(key) {
-  const digest = createHash("sha256").update(Buffer.from(key, "base64")).digest().subarray(0, 16);
-  return [...digest].flatMap((byte) => [byte >> 4, byte & 15]).map((nibble) => String.fromCharCode(97 + nibble)).join("");
-}
-
 async function waitForDevToolsPort(directory, processHandle) {
   const file = path.join(directory, "DevToolsActivePort");
   for (let attempt = 0; attempt < 300; attempt += 1) {
@@ -115,17 +119,30 @@ async function waitForDevToolsPort(directory, processHandle) {
   throw new Error("Timed out waiting for Chrome DevTools port");
 }
 
-async function waitForExtensionTarget(port, expectedUrl) {
+async function listTargets(port) {
+  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
+  if (!response.ok) throw new Error(`Cannot list Chrome targets: HTTP ${response.status}`);
+  return response.json();
+}
+
+async function waitForExtensionWorker(port) {
   for (let attempt = 0; attempt < 300; attempt += 1) {
-    const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => null);
-    if (response?.ok) {
-      const targets = await response.json();
-      const target = targets.find((item) => item.type === "page" && item.url === expectedUrl);
-      if (target?.webSocketDebuggerUrl) return target;
-    }
+    const targets = await listTargets(port).catch(() => []);
+    const target = targets.find((item) => ["service_worker", "background_page"].includes(item.type) && /^chrome-extension:\/\/.+\/service-worker\.js/.test(item.url));
+    if (target?.webSocketDebuggerUrl) return target;
     await delay(100);
   }
-  throw new Error("Timed out waiting for the Neptune extension page target");
+  throw new Error("Neptune service worker was not activated by Chrome");
+}
+
+async function waitForPageTarget(port) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const targets = await listTargets(port).catch(() => []);
+    const target = targets.find((item) => item.type === "page" && item.url === "about:blank") ?? targets.find((item) => item.type === "page");
+    if (target?.webSocketDebuggerUrl) return target;
+    await delay(100);
+  }
+  throw new Error("No controllable Chrome page target is available");
 }
 
 async function ensureOnboardingLoaded(cdp, url) {
