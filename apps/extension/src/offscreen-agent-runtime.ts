@@ -94,10 +94,11 @@ async function restoreDurableMission(): Promise<void> {
   const current = mission.actions[mission.currentIndex];
   if (current?.status === "running") {
     if (current.risk === "external_write" || current.risk === "sensitive") {
+      const interruptionMessage = "Neptune a été interrompu pendant une action externe. Vérifiez le résultat dans la page, puis cliquez sur Reprendre.";
       mission.status = "blocked";
-      mission.lastError = "Neptune a été interrompu pendant une action externe. Vérifiez le résultat dans la page, puis cliquez sur Reprendre.";
-      mission = addHistory(mission, "human", mission.lastError);
-      await appendMessage("assistant", mission.lastError, "warning");
+      mission.lastError = interruptionMessage;
+      mission = addHistory(mission, "human", interruptionMessage);
+      await appendMessage("assistant", interruptionMessage, "warning");
     } else {
       mission.actions = mission.actions.map((action, index) => index === mission!.currentIndex ? { ...action, status: "pending" as const } : action);
       mission.status = "running";
