@@ -21,12 +21,12 @@ beforeAll(() => {
 });
 
 describe("Neptune embedded French voices", () => {
-  it("exposes exactly one female and one male product voice", async () => {
+  it("exposes exactly one female and one premium male product voice", async () => {
     const { NEPTUNE_LOCAL_VOICES } = await import("./local-voice-runtime");
     expect(NEPTUNE_LOCAL_VOICES).toHaveLength(2);
     expect(NEPTUNE_LOCAL_VOICES.map((voice) => voice.id)).toEqual([
       "fr_FR-siwis-medium",
-      "fr_FR-tom-medium"
+      "fr_FR-upmc-medium"
     ]);
     expect(NEPTUNE_LOCAL_VOICES.map((voice) => voice.name)).toEqual([
       "Féminine",
