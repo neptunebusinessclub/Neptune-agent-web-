@@ -38,6 +38,7 @@ import {
   setSelectedVoiceUri,
   stopLocalPlayback
 } from "./local-voice-runtime";
+import { ensureManagedHermes, repairManagedHermes, type ManagedHermesProgress } from "./managed-hermes-runtime";
 import { deleteSecret, loadSecret, saveSecret } from "./secure-storage";
 import {
   BALANCED_LOCAL_MODEL_ID,
@@ -132,9 +133,9 @@ const DEFAULT_PREFERENCES: Preferences = {
   voiceGender: "female",
   voiceURI: PRODUCT_VOICES.female.uri,
   trustLevel: "assisted",
-  providerId: "chrome-local",
-  endpoint: "https://api.mammouth.ai/v1",
-  model: BALANCED_LOCAL_MODEL_ID,
+  providerId: "hermes",
+  endpoint: "http://127.0.0.1:8642",
+  model: "Qwen3-4B-Q4_K_M",
   wakeWordEnabled: true,
   wakeWord: "OK Neptune",
   siteAccessGranted: false,
@@ -190,8 +191,9 @@ async function initialize(): Promise<void> {
       onboardingStep: 0,
       voiceGender: gender,
       voiceURI: voiceForGender(gender).uri,
-      providerId: "chrome-local",
-      model: BALANCED_LOCAL_MODEL_ID,
+      providerId: "hermes",
+      endpoint: "http://127.0.0.1:8642",
+      model: "Qwen3-4B-Q4_K_M",
       wakeWordEnabled: true,
       wakeWord: "OK Neptune"
     };
@@ -201,8 +203,8 @@ async function initialize(): Promise<void> {
   mission = isAgentMission(session[STORAGE_MISSION]) ? session[STORAGE_MISSION] as AgentMission : null;
   preferences.siteAccessGranted = await chrome.permissions.contains({ origins: HOST_ORIGINS });
   setSelectedVoiceUri(preferences.voiceURI);
-  await ensureBalancedSelection(migrate);
-  providerSecretSaved = Boolean(await loadSecret(preferences.providerId));
+  await ensureManagedSelection(migrate);
+  providerSecretSaved = preferences.providerId === "hermes" ? false : Boolean(await loadSecret(preferences.providerId));
   bindEvents();
   await savePreferences();
 
@@ -296,7 +298,8 @@ async function dispatchClick(event: Event): Promise<void> {
         render();
         break;
       case "test-provider": await testProvider(); break;
-      case "prepare-brain": await prepareBalancedBrain(); break;
+      case "prepare-brain": await prepareManagedBrain(); break;
+      case "repair-managed-hermes": await prepareManagedBrain(true); break;
       case "retry-voice": await prepareSelectedVoice(true); break;
       case "clear-history":
         messages = [];
@@ -360,12 +363,12 @@ async function nextOnboardingStep(): Promise<void> {
     preferences.onboardingStep += 1;
     await savePreferences();
     render();
-    if (preferences.onboardingStep === 3) void prepareBalancedBrain();
+    if (preferences.onboardingStep === 3) void prepareManagedBrain();
     else speak(onboardingSpeech(preferences.onboardingStep));
     return;
   }
   if (brainState !== "ready") {
-    await prepareBalancedBrain();
+    await prepareManagedBrain();
     if ((brainState as ReadyState) !== "ready") return;
   }
   preferences.onboardingComplete = true;
@@ -426,26 +429,75 @@ async function testVoiceActivation(): Promise<void> {
   render();
 }
 
-async function ensureBalancedSelection(force: boolean): Promise<void> {
-  const current = await getLocalModelSelection();
-  const recommended = recommendModelId(getLocalModelCatalog());
-  const next: LocalModelSelection = force || current.engine !== "webllm"
-    ? { engine: "webllm", modelId: recommended || BALANCED_LOCAL_MODEL_ID }
-    : current;
-  if (force) next.modelId = recommended || BALANCED_LOCAL_MODEL_ID;
-  await saveLocalModelSelection(next);
-  preferences.providerId = "chrome-local";
-  preferences.model = next.modelId;
+async function ensureManagedSelection(force: boolean): Promise<void> {
+  if (force || preferences.providerId === "hermes") {
+    preferences.providerId = "hermes";
+    preferences.endpoint = "http://127.0.0.1:8642";
+    preferences.model = "Qwen3-4B-Q4_K_M";
+  }
 }
 
 async function refreshBrainState(): Promise<void> {
-  const status = await getChromeAiAvailability();
-  brainState = status === "available" ? "ready" : status === "unavailable" ? "error" : "idle";
-  if (status === "unavailable") brainError = "Le moteur local n’est pas compatible avec ce poste.";
+  if (preferences.providerId === "hermes") {
+    brainState = "idle";
+    render();
+    void prepareManagedBrain();
+    return;
+  }
+  if (preferences.providerId === "chrome-local") {
+    const status = await getChromeAiAvailability();
+    brainState = status === "available" ? "ready" : status === "unavailable" ? "error" : "idle";
+    if (status === "unavailable") brainError = "Le moteur navigateur de secours n’est pas compatible avec ce poste.";
+    render();
+    return;
+  }
+  providerSecretSaved = Boolean(await loadSecret(preferences.providerId));
+  brainState = providerSecretSaved ? "ready" : "idle";
+  brainError = providerSecretSaved ? "" : "La clé du moteur de secours n’est pas enregistrée.";
   render();
 }
 
-async function prepareBalancedBrain(): Promise<void> {
+async function prepareManagedBrain(repair = false): Promise<void> {
+  if (brainState === "preparing") return;
+  if (preferences.providerId !== "hermes" && !repair) {
+    await prepareLocalFallbackBrain();
+    return;
+  }
+  brainState = "preparing";
+  brainProgress = 0;
+  brainError = "";
+  orbState = "thinking";
+  render();
+  try {
+    const progress = (state: ManagedHermesProgress) => {
+      brainProgress = state.progress;
+      transientWarning = state.detail;
+      render();
+    };
+    const connection = repair
+      ? await repairManagedHermes(progress, abortController?.signal)
+      : await ensureManagedHermes(progress, abortController?.signal);
+    preferences.providerId = "hermes";
+    preferences.endpoint = connection.endpoint;
+    preferences.model = connection.model;
+    await savePreferences();
+    brainState = "ready";
+    brainProgress = 100;
+    brainError = "";
+    transientWarning = "Hermes est prêt avec sa mémoire et ses compétences.";
+    orbState = "idle";
+    appendAudit("MANAGED_HERMES_READY", connection.model + " · runtime " + (connection.runtimeVersion ?? "intégré"));
+  } catch (error) {
+    brainState = "error";
+    orbState = "error";
+    brainError = errorMessage(error);
+    transientWarning = brainError;
+    appendAudit("MANAGED_HERMES_ERROR", brainError);
+  }
+  render();
+}
+
+async function prepareLocalFallbackBrain(): Promise<void> {
   if (brainState === "preparing") return;
   brainState = "preparing";
   brainProgress = 0;
@@ -501,7 +553,7 @@ async function prepareBalancedBrain(): Promise<void> {
   } else {
     brainState = "error";
     orbState = "error";
-    brainError = "Ce poste ne peut pas exécuter le cerveau local. Ouvrez les paramètres avancés pour connecter un fournisseur.";
+    brainError = "Le moteur navigateur de secours n’est pas compatible avec ce poste. Revenez à Hermes intégré ou choisissez un autre secours.";
     appendAudit("LOCAL_BRAIN_ERROR", errorMessage(lastError));
   }
   render();
@@ -522,8 +574,8 @@ async function submitMessage(text: string): Promise<void> {
   const provider = await ensureProviderReady();
   if (!provider) {
     settingsOpen = true;
-    advancedOpen = true;
-    transientWarning = "Le cerveau de Neptune n’est pas prêt. Vérifiez les paramètres avancés.";
+    advancedOpen = false;
+    transientWarning = brainError || "Le cerveau Hermes intégré n’est pas prêt. Lancez NeptuneSetup.exe ou utilisez Réparer Hermes.";
     render();
     return;
   }
@@ -559,9 +611,30 @@ async function submitMessage(text: string): Promise<void> {
 }
 
 async function ensureProviderReady(): Promise<ProviderConfig | null> {
+  if (preferences.providerId === "hermes") {
+    try {
+      const connection = await ensureManagedHermes((state) => {
+        brainState = "preparing";
+        brainProgress = state.progress;
+        transientWarning = state.detail;
+        render();
+      }, abortController?.signal);
+      preferences.endpoint = connection.endpoint;
+      preferences.model = connection.model;
+      brainState = "ready";
+      brainProgress = 100;
+      await savePreferences();
+      return { id: "hermes", apiKey: connection.apiKey, endpoint: connection.endpoint, model: connection.model };
+    } catch (error) {
+      brainState = "error";
+      brainError = errorMessage(error);
+      transientWarning = brainError;
+      return null;
+    }
+  }
   if (preferences.providerId === "chrome-local") {
     const status = await getChromeAiAvailability();
-    if (status !== "available") await prepareBalancedBrain();
+    if (status !== "available") await prepareLocalFallbackBrain();
     if (brainState === "error") return null;
     return { id: "chrome-local" };
   }
@@ -609,7 +682,7 @@ async function advanceMission(): Promise<void> {
   if (!mission || busy) return;
   const provider = await ensureProviderReady();
   if (!provider) {
-    await blockMission("Le moteur d’intelligence n’est plus disponible. Ouvrez les paramètres avancés, puis reprenez.");
+    await blockMission(brainError || "Hermes n’est plus disponible. Utilisez Diagnostiquer et réparer Hermes, puis reprenez au checkpoint.");
     return;
   }
   busy = true;
@@ -971,17 +1044,39 @@ async function selectAdvancedLocalModel(modelId: string): Promise<void> {
 
 async function selectProvider(providerId: ProviderId): Promise<void> {
   preferences.providerId = providerId;
+  brainError = "";
+  if (providerId === "hermes") {
+    preferences.endpoint = "http://127.0.0.1:8642";
+    preferences.model = "Qwen3-4B-Q4_K_M";
+    providerSecretSaved = false;
+    brainState = "idle";
+    await savePreferences();
+    render();
+    void prepareManagedBrain();
+    return;
+  }
+  if (providerId === "chrome-local") {
+    const selection = await getLocalModelSelection();
+    preferences.model = selection.modelId || BALANCED_LOCAL_MODEL_ID;
+    providerSecretSaved = false;
+    brainState = "idle";
+    await savePreferences();
+    render();
+    void refreshBrainState();
+    return;
+  }
   if (providerId === "mammouth") {
     preferences.endpoint = "https://api.mammouth.ai/v1";
-    preferences.model = preferences.model || "mammouth-recommended";
+    preferences.model = "mammouth-recommended";
   }
   providerSecretSaved = Boolean(await loadSecret(providerId));
+  brainState = providerSecretSaved ? "ready" : "idle";
   await savePreferences();
   render();
 }
 
 async function saveCurrentProviderSecret(): Promise<void> {
-  if (preferences.providerId === "chrome-local") return;
+  if (["chrome-local", "hermes"].includes(preferences.providerId)) return;
   if (secretDraft.trim().length < 8) throw new Error("La clé API paraît incomplète.");
   await saveSecret(preferences.providerId, secretDraft);
   secretDraft = "";
@@ -1011,7 +1106,7 @@ function render(): void {
     const conversation = document.getElementById("conversation");
     if (conversation) conversation.scrollTop = conversation.scrollHeight;
     animateSpectrum();
-    if (!preferences.onboardingComplete && preferences.onboardingStep === 3 && brainState === "idle") void prepareBalancedBrain();
+    if (!preferences.onboardingComplete && preferences.onboardingStep === 3 && brainState === "idle") void prepareManagedBrain();
   });
 }
 
@@ -1029,7 +1124,7 @@ function onboardingMarkup(step: number): string {
   if (step === 0) return `<p class="eyebrow">PREMIER ÉCHANGE</p><h2>Comment dois-je vous appeler ?</h2><p>Neptune personnalisera ses validations et ses interventions sans vous exposer de réglages techniques.</p><div class="field"><label for="preferred-name">Votre prénom</label><input id="preferred-name" class="input" value="${escapeAttribute(preferences.preferredName)}" placeholder="Johan" autofocus /></div>`;
   if (step === 1) return `<p class="eyebrow">VOIX INTÉGRÉE</p><h2>Préférez-vous une voix féminine ou masculine ?</h2><p>Les deux voix sont déjà incluses dans Neptune. Aucun téléchargement ni voix Windows par défaut.</p><div class="voice-pair">${voiceChoice("female")}${voiceChoice("male")}</div>${voiceState === "preparing" ? progressMarkup("Préparation de la voix intégrée", voiceProgress) : voiceState === "error" ? `<div class="notice warning">La voix n'a pas pu démarrer.</div><button type="button" class="primary-button wide-button" data-action="retry-voice">Réessayer la voix</button>` : ""}`;
   if (step === 2) return `<p class="eyebrow">ACTIVATION VOCALE</p><h2>Dites « Neptune » ou « OK Neptune »</h2><p>L’activation est déjà configurée. Ce test vérifie simplement que votre microphone vous entend correctement.</p><div class="wake-test ${activationTested ? "success" : ""}"><span class="wake-dot"></span><strong>${activationTested ? "Activation validée" : listeningWanted ? "Je vous écoute…" : "Prêt pour le test"}</strong></div><button type="button" class="primary-button wide-button" data-action="test-activation">${activationTested ? "Tester à nouveau" : "Tester maintenant"}</button>`;
-  return `<p class="eyebrow">CERVEAU LOCAL</p><h2>Neptune Équilibré se prépare automatiquement</h2><p>Le modèle local recommandé est choisi sans vous demander de comprendre des noms techniques. Les alternatives restent accessibles dans les paramètres avancés.</p>${brainStatusMarkup()}<div class="configuration-summary"><span>Voix ${preferences.voiceGender === "female" ? "féminine" : "masculine"}</span><span>Activation vocale prête</span><span>Cerveau local équilibré</span></div>`;
+  return `<p class="eyebrow">HERMES INTÉGRÉ</p><h2>Hermes se prépare automatiquement</h2><p>Neptune démarre automatiquement Hermes, sa mémoire et ses compétences. Aucune URL, clé API ou commande technique n’est demandée.</p>${brainStatusMarkup()}<div class="configuration-summary"><span>Voix ${preferences.voiceGender === "female" ? "féminine" : "masculine"}</span><span>Activation vocale prête</span><span>Hermes intégré</span></div>`;
 }
 
 function voiceChoice(gender: VoiceGender): string {
@@ -1079,7 +1174,7 @@ function missionDetailsMarkup(): string {
 
 function settingsMarkup(): string {
   const catalog = getLocalModelCatalog();
-  const selectionLabel = catalog.find((model) => model.id === preferences.model)?.name ?? "Neptune Équilibré";
+  const selectionLabel = preferences.providerId === "hermes" ? "Hermes intégré" : catalog.find((model) => model.id === preferences.model)?.name ?? "Neptune local";
   return `<div class="modal-backdrop"><section class="modal"><header class="modal-head"><div><p class="eyebrow">PRÉFÉRENCES</p><h2>Configurer Neptune</h2></div><button type="button" class="icon-button" data-action="close-settings">×</button></header><div class="settings-section"><h3>Expérience</h3><div class="field"><label for="settings-name">Votre prénom</label><input id="settings-name" class="input" value="${escapeAttribute(preferences.preferredName)}" /></div><div class="settings-voice-pair">${settingsVoiceButton("female")}${settingsVoiceButton("male")}</div><p>Activation : « Neptune » et « OK Neptune » sont déjà actifs.</p></div><div class="settings-section"><h3>Cerveau actuel</h3><div class="setting-status"><strong>${escapeHtml(selectionLabel)}</strong><span>${brainState === "ready" ? "Prêt localement" : brainState === "preparing" ? `Préparation ${brainProgress}%` : "À préparer"}</span></div><button type="button" class="ghost-button" data-action="toggle-advanced">${advancedOpen ? "Masquer les paramètres avancés" : "Paramètres avancés"}</button></div>${advancedOpen ? advancedSettingsMarkup() : ""}<div class="settings-section"><h3>Données locales</h3><p>${messages.length} message(s) et ${audit.length} événement(s) conservés dans ce profil Chrome.</p><div class="inline-actions"><button type="button" class="ghost-button" data-action="clear-history">Effacer la conversation</button><button type="button" class="ghost-button" data-action="clear-audit">Effacer le journal</button><button type="button" class="ghost-button" data-action="reset-onboarding">Relancer l’accueil</button></div></div></section></div>`;
 }
 
@@ -1090,7 +1185,16 @@ function settingsVoiceButton(gender: VoiceGender): string {
 
 function advancedSettingsMarkup(): string {
   const catalog = getLocalModelCatalog();
-  return `<div class="settings-section advanced"><h3>Intelligence avancée</h3><p>Ces réglages ne sont pas nécessaires pour utiliser Neptune.</p><div class="field"><label>Modèle local</label><select class="select" id="advanced-local-model">${catalog.map((model) => `<option value="${escapeAttribute(model.id)}" ${preferences.model === model.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><button type="button" class="ghost-button" data-action="select-local-model" data-value="${escapeAttribute(preferences.model)}">Utiliser ce modèle local</button><div class="field"><label for="advanced-provider">Fournisseur</label><select id="advanced-provider" class="select"><option value="chrome-local" ${preferences.providerId === "chrome-local" ? "selected" : ""}>Local</option><option value="mammouth" ${preferences.providerId === "mammouth" ? "selected" : ""}>Mammouth AI</option><option value="openai-compatible" ${preferences.providerId === "openai-compatible" ? "selected" : ""}>API compatible OpenAI</option></select></div><div class="inline-actions"><button type="button" class="ghost-button" data-action="select-provider" data-value="mammouth">Mammouth</button><button type="button" class="ghost-button" data-action="select-provider" data-value="openai-compatible">API personnalisée</button><button type="button" class="ghost-button" data-action="select-provider" data-value="chrome-local">Revenir au local</button></div>${preferences.providerId !== "chrome-local" ? providerFieldsMarkup() : `<div class="notice ${isWebGpuAvailable() ? "success" : "warning"}">${isWebGpuAvailable() ? "WebGPU disponible." : "WebGPU indisponible : le mode automatique tentera l’intelligence intégrée de Chrome."}</div>`}<div class="field"><label>Niveau de contrôle</label><div class="trust-grid">${trustButton("prudent", "Prudent")}${trustButton("assisted", "Collaborateur")}${trustButton("controlled", "Autonome contrôlé")}</div></div></div>`;
+  const providerPanel = preferences.providerId === "hermes"
+    ? managedHermesSettingsMarkup()
+    : preferences.providerId !== "chrome-local"
+      ? providerFieldsMarkup()
+      : `<div class="notice ${isWebGpuAvailable() ? "success" : "warning"}">${isWebGpuAvailable() ? "WebGPU disponible pour le moteur local de secours." : "WebGPU indisponible : Hermes reste le moteur principal."}</div>`;
+  return `<div class="settings-section advanced"><h3>Intelligence avancée</h3><p>Hermes intégré est le cerveau par défaut. Ces réglages servent uniquement à choisir un moteur de secours.</p><div class="field"><label for="advanced-provider">Moteur de secours</label><select id="advanced-provider" class="select"><option value="hermes" ${preferences.providerId === "hermes" ? "selected" : ""}>Hermes intégré — recommandé</option><option value="chrome-local" ${preferences.providerId === "chrome-local" ? "selected" : ""}>Modèle navigateur local</option><option value="mammouth" ${preferences.providerId === "mammouth" ? "selected" : ""}>Mammouth AI</option><option value="openai-compatible" ${preferences.providerId === "openai-compatible" ? "selected" : ""}>API compatible OpenAI</option></select></div>${preferences.providerId === "chrome-local" ? `<div class="field"><label>Modèle local de secours</label><select class="select" id="advanced-local-model">${catalog.map((model) => `<option value="${escapeAttribute(model.id)}" ${preferences.model === model.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><button type="button" class="ghost-button" data-action="select-local-model" data-value="${escapeAttribute(preferences.model)}">Utiliser ce modèle local</button>` : ""}${providerPanel}<div class="field"><label>Niveau de contrôle</label><div class="trust-grid">${trustButton("prudent", "Prudent")}${trustButton("assisted", "Collaborateur")}${trustButton("controlled", "Autonome contrôlé")}</div></div></div>`;
+}
+
+function managedHermesSettingsMarkup(): string {
+  return `<div class="notice ${brainState === "ready" ? "success" : brainState === "error" ? "warning" : ""}"><strong>Hermes intégré</strong><br>${brainState === "ready" ? "Mémoire, compétences et outils locaux opérationnels." : brainState === "preparing" ? `Préparation en cours — ${brainProgress}%` : escapeHtml(brainError || "Neptune démarre automatiquement Hermes lorsque nécessaire.")}</div><button type="button" class="ghost-button" data-action="repair-managed-hermes">Diagnostiquer et réparer Hermes</button>`;
 }
 
 function providerFieldsMarkup(): string {
@@ -1102,10 +1206,10 @@ function trustButton(level: TrustLevel, label: string): string {
 }
 
 function brainStatusMarkup(): string {
-  if (brainState === "ready") return `<div class="notice success">Neptune Équilibré est prêt et fonctionne localement.</div>`;
-  if (brainState === "preparing") return `${progressMarkup("Préparation du cerveau local", brainProgress)}<p class="preparation-note">La première préparation peut prendre quelques minutes. Elle ne sera pas répétée à chaque utilisation.</p>`;
-  if (brainState === "error") return `<div class="notice warning">${escapeHtml(brainError || "Le modèle local n’a pas pu être préparé.")}</div><button type="button" class="primary-button wide-button" data-action="prepare-brain">Réessayer</button>`;
-  return `<button type="button" class="primary-button wide-button" data-action="prepare-brain">Préparer Neptune Équilibré</button>`;
+  if (brainState === "ready") return `<div class="notice success">Hermes est prêt avec sa mémoire, ses compétences et ses outils locaux.</div>`;
+  if (brainState === "preparing") return `${progressMarkup("Préparation automatique de Hermes", brainProgress)}<p class="preparation-note">Le premier démarrage peut prendre quelques minutes. Aucune clé ni configuration n’est demandée.</p>`;
+  if (brainState === "error") return `<div class="notice warning">${escapeHtml(brainError || "Hermes n’a pas pu démarrer.")}</div><button type="button" class="primary-button wide-button" data-action="repair-managed-hermes">Installer ou réparer Hermes</button>`;
+  return `<button type="button" class="primary-button wide-button" data-action="prepare-brain">Démarrer Hermes</button>`;
 }
 
 function progressMarkup(label: string, progress: number): string {
@@ -1133,12 +1237,14 @@ function stateLabel(): string {
 }
 
 function onboardingSpeech(step: number): string {
-  return ["Comment dois-je vous appeler ?", "Préférez-vous une voix féminine ou masculine ?", "Dites Neptune ou OK Neptune pour échanger avec moi.", "Je prépare mon cerveau local équilibré."][step] ?? "";
+  return ["Comment dois-je vous appeler ?", "Préférez-vous une voix féminine ou masculine ?", "Dites Neptune ou OK Neptune pour échanger avec moi.", "Je prépare Hermes, ma mémoire et mes compétences."][step] ?? "";
 }
 
 function brainLabel(): string {
-  if (preferences.providerId !== "chrome-local") return preferences.providerId === "mammouth" ? "Mammouth AI" : "API externe";
-  return brainState === "ready" ? "Neptune Équilibré · local" : "Cerveau local";
+  if (preferences.providerId === "hermes") return brainState === "ready" ? "Hermes intégré · local" : "Hermes se prépare";
+  if (preferences.providerId === "mammouth") return "Mammouth AI · secours";
+  if (preferences.providerId === "openai-compatible") return "API externe · secours";
+  return brainState === "ready" ? "Modèle navigateur · secours" : "Moteur de secours";
 }
 
 function workspaceStartMessage(mode: WorkspaceMode): string {

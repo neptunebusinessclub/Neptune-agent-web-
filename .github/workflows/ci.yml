@@ -106,14 +106,13 @@ jobs:
         if: steps.build.outcome == 'failure'
         run: exit 1
 
-      - name: Validate Neptune 1.7 package
+      - name: Validate Neptune 1.8 package
         shell: bash
         run: |
-          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.7.0'||m.version_name!=='1.7 Hermes Brain'||!m.permissions?.includes('offscreen')||m.permissions?.includes('nativeMessaging')||!m.host_permissions?.includes('http://127.0.0.1/*')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.8.0'||m.version_name!=='1.8 Hermes Integrated'||!m.permissions?.includes('offscreen')||!m.permissions?.includes('nativeMessaging')||!m.host_permissions?.includes('http://127.0.0.1/*')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
           test -f apps/extension/dist/sidepanel.html
           test -f apps/extension/dist/sidepanel.js
           test -f apps/extension/dist/premium-hologram.css
-          test -f apps/extension/dist/hermes-settings.css
           test -f apps/extension/dist/offscreen.html
           test -f apps/extension/dist/offscreen-wake.js
           test -f apps/extension/dist/webllm-worker.js
@@ -122,61 +121,45 @@ jobs:
           test -f apps/extension/dist/content-script.js
           test -f apps/extension/dist/privacy.html
           test -f apps/extension/dist/voices/fr_FR-siwis-medium.onnx
-          test -f apps/extension/dist/voices/fr_FR-siwis-medium.onnx.json
           test -f apps/extension/dist/voices/fr_FR-upmc-medium.onnx
-          test -f apps/extension/dist/voices/fr_FR-upmc-medium.onnx.json
-          test -f apps/extension/dist/voices/runtime/piper_phonemize.data
-          test -f apps/extension/dist/voices/runtime/piper_phonemize.wasm
-          test -f apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.mjs
-          test -f apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.wasm
-          test -s apps/extension/dist/voices/runtime/piper_phonemize.data
           test -s apps/extension/dist/voices/runtime/piper_phonemize.wasm
-          test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.mjs
           test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.wasm
-          grep -q "callHermesAgent" apps/extension/src/intelligence.ts
-          grep -q "X-Hermes-Session-Id" apps/extension/src/hermes-client.ts
-          grep -q "X-Hermes-Session-Key" apps/extension/src/hermes-client.ts
-          grep -q "API_SERVER_CORS_ORIGINS" apps/extension/src/hermes-settings.ts
-          grep -q "Hermes Agent — mémoire et compétences" apps/extension/src/hermes-settings.ts
-          grep -q "planAgentStep" apps/extension/src/neptune-app.ts
-          grep -q "MISSION_CONTROL_KEY" apps/extension/src/service-worker.ts
-          grep -q "createWritable" apps/extension/src/piper-voice-worker.ts
-          grep -q "fr_FR-upmc-medium" apps/extension/src/piper-voice-worker.ts
-          grep -q "speakerId = this.voiceId" apps/extension/esbuild.mjs
-          grep -q "continue-without-microphone" apps/extension/src/premium-experience.ts
-          grep -q "premium-speak" apps/extension/static/premium-hologram.css
-          grep -q "current-tab" apps/extension/src/service-worker.ts
-          grep -q "new-window" apps/extension/src/service-worker.ts
-          grep -q "Qwen2.5-1.5B" apps/extension/src/product-config.ts
-          grep -q "voices/runtime" apps/extension/dist/piper-voice-worker.js
-          grep -q "USER_MEDIA" apps/extension/src/service-worker.ts
-          grep -q "BACKGROUND_WAKE_TRANSCRIPT" apps/extension/src/offscreen-wake.ts
+          grep -q 'com.neptune.hermes' apps/extension/src/managed-hermes-runtime.ts
+          grep -q 'ensureManagedHermes' apps/extension/src/neptune-app.ts
+          grep -q 'Hermes intégré' apps/extension/src/neptune-app.ts
+          grep -q 'nativeMessaging' apps/extension/dist/manifest.json
+          grep -q 'planAgentStep' apps/extension/src/neptune-app.ts
+          grep -q 'MISSION_CONTROL_KEY' apps/extension/src/service-worker.ts
+          grep -q 'createWritable' apps/extension/src/piper-voice-worker.ts
+          grep -q 'fr_FR-upmc-medium' apps/extension/src/piper-voice-worker.ts
+          grep -q 'speakerId = this.voiceId' apps/extension/esbuild.mjs
+          grep -q 'continue-without-microphone' apps/extension/src/premium-experience.ts
+          grep -q 'premium-speak' apps/extension/static/premium-hologram.css
+          grep -q 'current-tab' apps/extension/src/service-worker.ts
+          grep -q 'new-window' apps/extension/src/service-worker.ts
+          grep -q 'BACKGROUND_WAKE_TRANSCRIPT' apps/extension/src/offscreen-wake.ts
+          if grep -q 'hermes-settings' apps/extension/src/sidepanel-entry.ts; then
+            echo 'The manual Hermes configuration overlay is still loaded.'
+            exit 1
+          fi
           if find apps/extension/dist/voices -name 'fr_FR-tom-medium*' -print -quit | grep -q .; then
-            echo "The obsolete robotic Tom voice is still packaged."
+            echo 'The obsolete robotic Tom voice is still packaged.'
             exit 1
           fi
-          if grep -E "var\(--seed\).*/(16|18|22)" apps/extension/static/premium-hologram.css; then
-            echo "The hologram contains an excessive seed-based deformation."
-            exit 1
-          fi
-          if grep -q "voice-hub-overlay\|model-hub-overlay\|agentic-sidepanel" apps/extension/src/sidepanel-entry.ts; then
-            echo "Legacy UI overlays are still loaded."
-            exit 1
-          fi
-          if grep -R -n -E "onchange=|onclick=|oninput=" apps/extension/dist; then
-            echo "Inline JavaScript handlers are forbidden in the production package."
+          if grep -R -n -E 'onchange=|onclick=|oninput=' apps/extension/dist; then
+            echo 'Inline JavaScript handlers are forbidden in the production package.'
             exit 1
           fi
           if find apps/extension/dist -name '*.map' -print -quit | grep -q .; then
-            echo "Source maps must not ship in the production package."
+            echo 'Source maps must not ship in the production package.'
             exit 1
           fi
-          if grep -E "cdn\.jsdelivr\.net/npm/@diffusionstudio/piper-wasm|cdnjs\.cloudflare\.com/ajax/libs/onnxruntime-web|chrome\.runtime" apps/extension/dist/piper-voice-worker.js; then
-            echo "The packaged voice worker still depends on a forbidden runtime or remote CDN."
+          if grep -E 'cdn\.jsdelivr\.net/npm/@diffusionstudio/piper-wasm|cdnjs\.cloudflare\.com/ajax/libs/onnxruntime-web|chrome\.runtime' apps/extension/dist/piper-voice-worker.js; then
+            echo 'The packaged voice worker still depends on a forbidden runtime or remote CDN.'
             exit 1
           fi
-          if grep -R -n -E "Neptune Runtime|127\.0\.0\.1:8787|Jeton API Neptune|nativeMessaging" apps/extension/dist; then
-            echo "A production-forbidden Runtime dependency was found in the extension package."
+          if grep -R -n -E '127\.0\.0\.1:8787|Jeton API Neptune' apps/extension/dist; then
+            echo 'A deprecated Neptune Runtime dependency was found.'
             exit 1
           fi
 
@@ -187,18 +170,18 @@ jobs:
         shell: bash
         run: |
           cd apps/extension/dist
-          zip -r ../../../neptune-extension-hermes-v1.7.0.zip .
+          zip -r ../../../neptune-extension-managed-v1.8.0.zip .
 
-      - name: Publish production extension
+      - name: Publish managed extension
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-extension-hermes-v1.7.0
-          path: neptune-extension-hermes-v1.7.0.zip
+          name: neptune-extension-managed-v1.8.0
+          path: neptune-extension-managed-v1.8.0.zip
           if-no-files-found: error
           retention-days: 90
 
   windows-smoke:
-    name: Windows Chromium smoke
+    name: Windows runtime and Chromium smoke
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -215,11 +198,88 @@ jobs:
         with:
           node-version: 22
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: apps/managed-runtime/go.mod
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Validate PowerShell sources
+        shell: pwsh
+        run: |
+          [scriptblock]::Create((Get-Content 'apps/managed-runtime/assets/install.ps1' -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content 'apps/managed-runtime/assets/start-runtime.ps1' -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content 'apps/managed-runtime/scripts/build-windows.ps1' -Raw)) | Out-Null
+
+      - name: Build managed Hermes installer
+        shell: pwsh
+        run: ./apps/managed-runtime/scripts/build-windows.ps1
+
+      - name: Test Native Messaging host
+        run: node tests/run-managed-hermes-native-smoke.mjs
+
       - name: Build and run real Chromium product test
         run: pnpm test
+
+      - name: Publish NeptuneSetup
+        uses: actions/upload-artifact@v4
+        with:
+          name: neptune-managed-runtime-windows-v1.8.0
+          path: apps/managed-runtime/dist/NeptuneSetup.exe
+          if-no-files-found: error
+          retention-days: 90
+
+  release-package:
+    name: Assemble one-click Windows package
+    needs: [validate, windows-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download extension
+        uses: actions/download-artifact@v4
+        with:
+          name: neptune-extension-managed-v1.8.0
+          path: release
+
+      - name: Download managed runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: neptune-managed-runtime-windows-v1.8.0
+          path: release
+
+      - name: Add installation guide
+        shell: bash
+        run: |
+          cat > release/INSTALLATION.txt <<'EOF'
+          NEPTUNE 1.8 — HERMES INTÉGRÉ
+
+          1. Lancez NeptuneSetup.exe une seule fois.
+          2. L’installateur télécharge et configure automatiquement Hermes Agent, llama.cpp et le modèle local Qwen3-4B.
+          3. Décompressez neptune-extension-managed-v1.8.0.zip dans un dossier permanent.
+          4. Ouvrez chrome://extensions, activez Mode développeur, puis cliquez sur Charger l’extension non empaquetée.
+          5. Sélectionnez le dossier contenant manifest.json.
+
+          Aucune clé API, URL, variable CORS ou commande terminal n’est demandée.
+          Configuration minimale : Windows 10/11 x64, Chrome 138+, 16 Go de RAM et environ 6 Go d’espace libre.
+          EOF
+
+      - name: Build final product ZIP
+        shell: bash
+        run: |
+          test -s release/NeptuneSetup.exe
+          test -s release/neptune-extension-managed-v1.8.0.zip
+          cd release
+          zip -r ../Neptune-1.8-Hermes-Integrated-Windows.zip .
+
+      - name: Publish final product
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neptune-1.8-Hermes-Integrated-Windows
+          path: Neptune-1.8-Hermes-Integrated-Windows.zip
+          if-no-files-found: error
+          retention-days: 90

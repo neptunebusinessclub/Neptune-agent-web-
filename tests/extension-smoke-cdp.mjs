@@ -84,40 +84,14 @@ try {
   const permissionText = await evaluate(cdp, `document.body.innerText`);
   assert(!/Permission dismissed/i.test(permissionText), "The microphone flow exposed the raw Permission dismissed error");
 
-  await completeOnboardingForIntegrationTest(cdp);
-  await waitFor(cdp, `Boolean(document.querySelector("button[data-action='open-settings']"))`, 15_000);
+  await completeOnboardingForIntegrationTest(cdp, hermes.endpoint);
+  await waitFor(cdp, `Boolean(document.querySelector("button[data-action='open-settings']"))`, 20_000);
   await evaluate(cdp, `document.querySelector("button[data-action='open-settings']").click()`);
   await waitFor(cdp, `Boolean(document.querySelector("button[data-action='toggle-advanced']"))`, 10_000);
   await evaluate(cdp, `document.querySelector("button[data-action='toggle-advanced']").click()`);
-  await waitFor(cdp, `Boolean(document.querySelector("#advanced-provider option[value='hermes']")) && Boolean(document.querySelector("#neptune-hermes-card"))`, 10_000);
-
-  const corsLine = await evaluate(cdp, `document.querySelector(".hermes-origin")?.textContent ?? ""`);
-  assert(corsLine === `API_SERVER_CORS_ORIGINS=chrome-extension://${extensionId}`, "Neptune did not expose the exact Hermes CORS origin");
-
-  await evaluate(cdp, `(() => {
-    const provider = document.querySelector("#advanced-provider");
-    provider.value = "hermes";
-    provider.dispatchEvent(new Event("change", { bubbles: true }));
-    return true;
-  })()`);
-  await waitFor(cdp, `document.querySelector("#advanced-provider")?.value === "hermes" && Boolean(document.querySelector("#provider-endpoint")) && Boolean(document.querySelector("#provider-secret"))`, 10_000);
-
-  await evaluate(cdp, `(() => {
-    const endpoint = document.querySelector("#provider-endpoint");
-    const model = document.querySelector("#provider-model");
-    const secret = document.querySelector("#provider-secret");
-    endpoint.value = ${JSON.stringify(hermes.endpoint)};
-    model.value = "hermes-agent";
-    secret.value = "neptune-hermes-test-key";
-    endpoint.dispatchEvent(new Event("input", { bubbles: true }));
-    model.dispatchEvent(new Event("input", { bubbles: true }));
-    secret.dispatchEvent(new Event("input", { bubbles: true }));
-    return true;
-  })()`);
-  await evaluate(cdp, `document.querySelector("button[data-hermes-action='connect']").click()`);
-  await waitFor(cdp, `document.querySelector("#neptune-hermes-status")?.textContent?.includes("Hermes connecté") === true`, 20_000);
-  assert(hermes.requests.some((request) => request.path === "/v1/capabilities"), "Neptune did not inspect Hermes capabilities");
-  assert(hermes.requests.some((request) => request.path === "/v1/skills"), "Neptune did not inspect Hermes skills");
+  await waitFor(cdp, `document.querySelector("#advanced-provider")?.value === "hermes" && document.body.innerText.includes("Hermes intégré")`, 10_000);
+  const manualHermesFields = await evaluate(cdp, `Boolean(document.querySelector("#provider-endpoint")) || Boolean(document.querySelector("#provider-secret")) || Boolean(document.querySelector("#neptune-hermes-card"))`);
+  assert(manualHermesFields === false, "Neptune still exposes manual Hermes URL, API key or CORS controls");
 
   await evaluate(cdp, `document.querySelector("button[data-action='close-settings']").click()`);
   await waitFor(cdp, `Boolean(document.querySelector("#draft"))`, 10_000);
@@ -131,7 +105,7 @@ try {
   await waitFor(cdp, `document.body.innerText.includes("Hermes a répondu depuis le serveur de recette.")`, 20_000);
   const chatRequest = hermes.requests.find((request) => request.path === "/v1/chat/completions");
   assert(chatRequest, "Neptune never sent the conversation to Hermes");
-  assert(chatRequest.authorization === "Bearer neptune-hermes-test-key", "Neptune did not authenticate the Hermes request");
+  assert(chatRequest.authorization === "Bearer neptune-hermes-test-key-123456", "Neptune did not use the automatically managed Hermes key");
   assert(/^neptune-/.test(chatRequest.sessionId ?? ""), "Neptune did not send a stable Hermes session ID");
   assert(/^neptune-user-/.test(chatRequest.sessionKey ?? ""), "Neptune did not send a stable Hermes session key");
 
@@ -165,7 +139,7 @@ try {
   assert(exceptions.length === 0, `Page exceptions: ${exceptions.join(" | ")}`);
   assert(consoleErrors.filter((message) => /Hermes|ReferenceError|TypeError/i.test(message)).length === 0, `Hermes console errors: ${consoleErrors.join(" | ")}`);
   await cdp.close();
-  console.log(`Neptune Chromium smoke test passed with premium voices, Hermes API integration and durable stop state for extension ${extensionId}.`);
+  console.log(`Neptune Chromium smoke test passed with premium voices, zero-config managed Hermes and durable stop state for extension ${extensionId}.`);
 } catch (error) {
   console.error(chromeOutput.slice(-8_000));
   throw error;
@@ -175,18 +149,30 @@ try {
   await removeDirectoryWithRetry(userDataDir);
 }
 
-async function completeOnboardingForIntegrationTest(cdp) {
+async function completeOnboardingForIntegrationTest(cdp, endpoint) {
   await evaluate(cdp, `(async () => {
     const key = "neptune.preferences.v2";
     const stored = await chrome.storage.local.get(key);
     await chrome.storage.local.set({
       [key]: {
         ...(stored[key] ?? {}),
-        productVersion: 17,
+        productVersion: 18,
         onboardingComplete: true,
         onboardingStep: 3,
+        providerId: "hermes",
+        endpoint: ${JSON.stringify(endpoint)},
+        model: "Qwen3-4B-Q4_K_M",
         wakeWordEnabled: false,
         autoResumeVoice: false
+      }
+    });
+    await chrome.storage.session.set({
+      "neptune.managedHermes.connection.v1": {
+        endpoint: ${JSON.stringify(endpoint)},
+        apiKey: "neptune-hermes-test-key-123456",
+        model: "Qwen3-4B-Q4_K_M",
+        runtimeVersion: "1.8.0",
+        managed: true
       }
     });
     location.reload();
@@ -220,7 +206,7 @@ async function startFakeHermesServer() {
       sessionKey: request.headers["x-hermes-session-key"],
       body
     });
-    if (authorization !== "Bearer neptune-hermes-test-key") {
+    if (authorization !== "Bearer neptune-hermes-test-key-123456") {
       sendJson(response, 401, { error: { message: "invalid key" } });
       return;
     }

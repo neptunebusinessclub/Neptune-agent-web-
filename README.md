@@ -1,27 +1,44 @@
-# Neptune — Assistant navigateur local, vocal et adaptatif
+# Neptune 1.8 — Assistant navigateur avec Hermes intégré
 
-Neptune est une **extension Chrome Manifest V3 autonome**. Le client installe un seul composant. Aucun Runtime Windows, serveur local ou jeton technique Neptune n’est requis.
+Neptune est un assistant navigateur vocal et agentique pour Chrome. Depuis la version 1.8, **Hermes Agent est le cerveau principal géré par Neptune** : l’utilisateur ne renseigne aucune URL, clé API, variable CORS ou commande terminal.
 
-## Version actuelle
+## Produit livré
+
+Le package Windows contient deux éléments :
 
 ```text
-Neptune 1.6 Hardened
+NeptuneSetup.exe
+neptune-extension-managed-v1.8.0.zip
 ```
 
-Cette version corrige les défauts bloquants constatés dans Neptune 1.5 et ajoute une recette automatique dans un véritable Chromium sous Linux et Windows.
+`NeptuneSetup.exe` s’exécute une seule fois et provisionne automatiquement :
 
-## Accueil en quatre étapes
+- Hermes Agent officiel, dans une version épinglée ;
+- llama.cpp pour l’inférence locale ;
+- Qwen3-4B Q4_K_M comme modèle équilibré ;
+- la mémoire et les compétences Hermes ;
+- une clé locale aléatoire, invisible pour l’utilisateur ;
+- le pont Native Messaging entre Chrome et le moteur local ;
+- le démarrage automatique et la réparation du runtime.
+
+Tous les services écoutent uniquement sur `127.0.0.1`.
+
+## Expérience utilisateur
+
+L’accueil reste limité à quatre étapes :
 
 1. prénom d’usage ;
-2. choix entre **Voix féminine** et **Voix masculine** ;
-3. test préconfiguré avec `Neptune` ou `OK Neptune` ;
-4. préparation automatique du cerveau local compatible avec le poste.
+2. voix féminine ou masculine ;
+3. test « Neptune » ou « OK Neptune » ;
+4. préparation automatique de Hermes.
 
-Les modèles alternatifs, fournisseurs cloud, clés API et niveaux de contrôle restent dans **Paramètres avancés**.
+Aucun choix de fournisseur ni réglage technique n’est affiché pendant l’accueil.
+
+Les fournisseurs alternatifs restent disponibles uniquement dans les paramètres avancés comme moteurs de secours.
 
 ## Voix françaises embarquées
 
-Le ZIP contient directement :
+Le ZIP Chrome contient directement :
 
 - une voix féminine française Piper ;
 - une voix masculine française Piper ;
@@ -29,64 +46,50 @@ Le ZIP contient directement :
 - ONNX Runtime Web ;
 - le Worker de synthèse.
 
-Aucune voix Windows n’est utilisée dans le parcours normal. Au premier usage, Neptune copie les fichiers déjà contenus dans l’extension vers le stockage privé OPFS de Chrome, attend la fin réelle des écritures et vérifie leur taille avant l’inférence. Aucun téléchargement vocal externe n’est requis.
+Le texte à prononcer et l’audio généré restent sur l’ordinateur. La voix Windows n’est pas utilisée dans le parcours normal.
 
-Les opérations Piper sont sérialisées afin d’éviter deux préparations concurrentes. La synthèse et la lecture disposent de délais maximaux et d’une récupération explicite. Le changement de voix réinitialise la session Piper pour éviter la réutilisation du modèle précédent.
+## Cerveau Hermes géré
 
-## Cerveau local adaptatif
+L’extension appelle un host Native Messaging à commandes fermées :
 
-Neptune choisit automatiquement le modèle local le plus cohérent avec les ressources déclarées par le navigateur :
+```text
+ensure
+status
+repair
+```
 
-1. modèle recommandé pour le poste ;
-2. Neptune Équilibré lorsque le poste le permet ;
-3. profil rapide ;
-4. profil léger ;
-5. intelligence locale intégrée à Chrome lorsqu’elle est disponible.
+Le host ne reçoit aucune commande shell arbitraire. Il vérifie ou démarre le runtime déjà installé par Neptune, puis renvoie uniquement une connexion locale validée.
 
-L’état **Prêt** n’est affiché qu’après une véritable réponse d’inférence. Si aucun moteur local n’est compatible, Neptune l’indique clairement et laisse les fournisseurs externes dans les paramètres avancés.
-
-## Boucle agentique
-
-Chaque mission suit un cycle court :
+La boucle agentique suit :
 
 ```text
 Observer
-→ décider de la prochaine action
-→ agir
+→ décider avec Hermes
+→ agir dans Chrome
 → vérifier
 → adapter
 → terminer ou demander une intervention
 ```
 
-Une mission est limitée à **16 cycles et 48 actions**. La stagnation, les CAPTCHA, l’authentification manquante et les cibles ambiguës suspendent l’exécution.
+Hermes apporte notamment :
+
+- mémoire persistante ;
+- compétences réutilisables ;
+- recherche et outils locaux ;
+- continuité de session ;
+- planification adaptative.
+
+Neptune conserve le contrôle des onglets, les validations humaines, la politique de sécurité et l’arrêt immédiat.
 
 ## Espace de travail adaptatif
 
 Avant une mission navigateur, Neptune propose :
 
-- **Prendre le relais ici** pour la page actuelle ;
-- **Nouvel onglet** pour isoler la mission ;
-- **Nouvelle fenêtre** pour un espace entièrement dédié.
+- **Prendre le relais ici** ;
+- **Nouvel onglet** ;
+- **Nouvelle fenêtre**.
 
-Les formulations explicites de l’utilisateur sont respectées.
-
-## Résilience et arrêt
-
-- mission et checkpoint conservés dans `chrome.storage.session` ;
-- arrêt persistant dans `chrome.storage.session` ;
-- contrôle de l’état avant et après chaque action ;
-- reprise après fermeture du panneau ;
-- réobservation après erreur de cible ;
-- verrouillage par action plutôt qu’un verrou global de toute l’interface ;
-- délais maximaux pour le Worker vocal, la synthèse et la lecture.
-
-Le bouton **Arrêter** reste effectif après la terminaison et le redémarrage du service worker.
-
-## Interface
-
-L’interface utilise un seul moteur de rendu et un seul répartiteur d’actions. Aucun gestionnaire JavaScript inline n’est autorisé dans le package de production.
-
-Le spectre circulaire est centré par un rayon géométrique explicite. Pendant la lecture audio, son amplitude reçoit les mesures d’un `AnalyserNode` Web Audio plutôt qu’une animation purement décorative.
+Le choix recommandé dépend de la formulation de la demande et de la page active.
 
 ## Sécurité
 
@@ -98,11 +101,42 @@ Neptune refuse d’automatiser :
 - signatures et engagements contractuels ;
 - contournements de CAPTCHA ou protections de plateforme.
 
-`SEND_MESSAGE` exige une autorisation explicite limitée à l’action concernée.
+Les communications externes nécessitent toujours une autorisation explicite limitée à l’action concernée.
 
-## Construction reproductible
+Le runtime géré applique également :
 
-Pré-requis : Node.js 22 et pnpm 10.13.1.
+- services limités au loopback ;
+- clé générée localement ;
+- manifeste Native Messaging limité à l’identifiant fixe de Neptune ;
+- vérification SHA-256 des téléchargements llama.cpp et Qwen ;
+- versions de dépendances épinglées ;
+- journaux locaux de diagnostic.
+
+## Configuration minimale Windows
+
+- Windows 10 ou 11 x64 ;
+- Chrome 138 ou version ultérieure ;
+- 16 Go de RAM minimum ;
+- environ 6 Go d’espace disque libre ;
+- connexion Internet lors de la première installation.
+
+Le premier lancement télécharge environ 2,5 Go pour le modèle Qwen, ainsi que les dépendances Hermes et llama.cpp. Les usages suivants peuvent fonctionner localement.
+
+## Installation
+
+1. lancer `NeptuneSetup.exe` ;
+2. attendre le message confirmant que Hermes est opérationnel ;
+3. décompresser `neptune-extension-managed-v1.8.0.zip` dans un dossier permanent ;
+4. ouvrir `chrome://extensions` ;
+5. activer **Mode développeur** ;
+6. cliquer sur **Charger l’extension non empaquetée** ;
+7. sélectionner le dossier contenant directement `manifest.json`.
+
+Aucune autre configuration n’est requise.
+
+## Construction et validation
+
+Pré-requis de développement : Node.js 22, pnpm 10.13.1 et Go 1.23.
 
 ```bash
 pnpm install --frozen-lockfile
@@ -111,44 +145,34 @@ pnpm test
 pnpm --filter @neptune/extension build
 ```
 
-Le dépôt contient `pnpm-lock.yaml`. La CI refuse une installation dont le graphe de dépendances diffère du lockfile.
+Sous Windows :
 
-## Validation obligatoire
+```powershell
+powershell -ExecutionPolicy Bypass -File apps/managed-runtime/scripts/build-windows.ps1
+```
 
-`pnpm test` :
+La CI valide :
 
-1. construit l’extension finale ;
-2. exécute les tests unitaires ;
-3. installe un Chromium de test compatible avec les extensions non empaquetées ;
-4. charge réellement Neptune ;
-5. vérifie que **Continuer** s’active après la saisie du prénom ;
-6. prépare et préécoute les voix féminine et masculine ;
-7. refuse toute exception `ReferenceError`, erreur Worker ou dépendance `chrome.*` dans le Worker vocal ;
-8. arrête une mission ;
-9. termine le service worker ;
-10. vérifie que l’arrêt reste persistant après son redémarrage.
-
-La CI exécute cette recette sous **Ubuntu** et **Windows**. Elle inspecte également le ZIP final, ses ressources vocales, son manifeste, l’absence de source maps, d’anciens composants Runtime, de scripts inline et de dépendances vocales CDN.
-
-## Installation de la version de recette
-
-1. ouvrir `chrome://extensions` ;
-2. supprimer une ancienne version de Neptune ;
-3. activer **Mode développeur** ;
-4. décompresser `neptune-extension-hardened-v1.6.0.zip` ;
-5. cliquer sur **Charger l’extension non empaquetée** ;
-6. sélectionner le dossier contenant directement `manifest.json` ;
-7. ouvrir Neptune et suivre les quatre étapes.
+- TypeScript et tests unitaires ;
+- extension chargée dans un véritable Chromium ;
+- voix féminine et masculine ;
+- persistance de l’arrêt ;
+- scripts PowerShell ;
+- tests Go ;
+- protocole Native Messaging ;
+- package Chrome ;
+- `NeptuneSetup.exe` ;
+- artefact Windows final réunissant les deux composants.
 
 ## Limites assumées
 
-- les modèles WebLLM nécessitent WebGPU et suffisamment de mémoire ;
-- la reconnaissance vocale dépend des capacités disponibles dans Chrome ;
-- la compatibilité métier de chaque plateforme web doit être validée sur ses comptes et parcours réels avant un déploiement commercial général ;
-- aucun scraping massif, envoi en volume, mécanisme de furtivité ou contournement de plateforme n’est inclus.
+- la première distribution zéro configuration cible Windows x64 ;
+- la compatibilité métier de chaque site doit être testée sur ses parcours réels ;
+- aucun scraping massif, mécanisme de furtivité ou contournement de plateforme n’est inclus ;
+- l’installateur n’est pas considéré comme publiquement distribuable tant qu’il n’est pas signé avec un certificat de signature de code.
 
 Voir également :
 
-- [`docs/PRODUCTION_SCOPE.md`](docs/PRODUCTION_SCOPE.md)
+- [`apps/managed-runtime/README.md`](apps/managed-runtime/README.md)
 - [`docs/SECURITY.md`](docs/SECURITY.md)
 - [`apps/extension/static/privacy.html`](apps/extension/static/privacy.html)
