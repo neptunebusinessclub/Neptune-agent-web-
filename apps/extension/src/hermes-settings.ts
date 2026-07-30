@@ -86,7 +86,7 @@ async function mountHermesControls(): Promise<void> {
     const preferences = isRecord(stored[PREFERENCES_KEY]) ? stored[PREFERENCES_KEY] : {};
     connectionState = isRecord(stored[CONNECTION_KEY]) ? stored[CONNECTION_KEY] : connectionState;
     hermesSelected = preferences.providerId === "hermes";
-    if (hermesSelected) providerSelect.value = "hermes";
+    if (hermesSelected && providerSelect.value !== "hermes") providerSelect.value = "hermes";
 
     const advanced = providerSelect.closest<HTMLElement>(".settings-section.advanced");
     if (advanced && !document.getElementById("neptune-hermes-card")) {
@@ -101,17 +101,14 @@ async function mountHermesControls(): Promise<void> {
 
 function refreshVisibleLabels(): void {
   if (!hermesSelected) return;
-  const composerBrain = document.querySelector<HTMLElement>(".composer-hint span:last-child");
-  if (composerBrain) composerBrain.textContent = "Hermes Agent";
+  setTextIfChanged(document.querySelector<HTMLElement>(".composer-hint span:last-child"), "Hermes Agent");
   const settingStatus = document.querySelector<HTMLElement>(".setting-status");
-  const name = settingStatus?.querySelector<HTMLElement>("strong");
-  const status = settingStatus?.querySelector<HTMLElement>("span");
-  if (name) name.textContent = "Hermes Agent — mémoire et compétences";
-  if (status) status.textContent = connectionState.status === "connected" ? "Connecté" : "À connecter";
+  setTextIfChanged(settingStatus?.querySelector<HTMLElement>("strong") ?? null, "Hermes Agent — mémoire et compétences");
+  setTextIfChanged(settingStatus?.querySelector<HTMLElement>("span") ?? null, connectionState.status === "connected" ? "Connecté" : "À connecter");
 }
 
 function renderLiveHermesStatus(status: string, detail: string): void {
-  document.documentElement.dataset.hermesStatus = status;
+  if (document.documentElement.dataset.hermesStatus !== status) document.documentElement.dataset.hermesStatus = status;
   window.clearTimeout(liveStatusTimer);
   const stage = document.querySelector<HTMLElement>(".conversation-stage");
   if (!stage) return;
@@ -124,8 +121,10 @@ function renderLiveHermesStatus(status: string, detail: string): void {
     element.setAttribute("aria-live", "polite");
     stage.prepend(element);
   }
-  element.className = `hermes-live-status ${status}`;
-  element.innerHTML = `<span class="hermes-live-pulse" aria-hidden="true"></span><strong>Hermes</strong><span>${escapeHtml(detail)}</span>`;
+  const className = `hermes-live-status ${status}`;
+  if (element.className !== className) element.className = className;
+  const markup = `<span class="hermes-live-pulse" aria-hidden="true"></span><strong>Hermes</strong><span>${escapeHtml(detail)}</span>`;
+  if (element.innerHTML !== markup) element.innerHTML = markup;
 
   if (["completed", "stopped"].includes(status)) {
     liveStatusTimer = window.setTimeout(() => {
@@ -144,10 +143,17 @@ async function configureHermesFields(dispatch = true): Promise<void> {
   const endpoint = document.querySelector<HTMLInputElement>("#provider-endpoint");
   const model = document.querySelector<HTMLInputElement>("#provider-model");
   if (!endpoint || !model) return;
+  let changed = false;
   const currentEndpoint = endpoint.value.trim();
-  if (!currentEndpoint || /api\.mammouth\.ai/i.test(currentEndpoint)) endpoint.value = getHermesDefaultEndpoint();
-  if (!model.value.trim() || model.value === "mammouth-recommended" || /Qwen|Llama|Phi/i.test(model.value)) model.value = "hermes-agent";
-  if (dispatch) {
+  if (!currentEndpoint || /api\.mammouth\.ai/i.test(currentEndpoint)) {
+    endpoint.value = getHermesDefaultEndpoint();
+    changed = true;
+  }
+  if (!model.value.trim() || model.value === "mammouth-recommended" || /Qwen|Llama|Phi/i.test(model.value)) {
+    model.value = "hermes-agent";
+    changed = true;
+  }
+  if (dispatch && changed) {
     endpoint.dispatchEvent(new Event("input", { bubbles: true }));
     model.dispatchEvent(new Event("input", { bubbles: true }));
   }
@@ -184,8 +190,8 @@ async function connectHermes(button: HTMLButtonElement): Promise<void> {
     const connection = await testHermesConnection({ endpoint, model, apiKey });
     if (enteredKey) await saveSecret("hermes", enteredKey);
     if (secretInput) secretInput.value = "";
-    if (endpointInput) endpointInput.value = connection.endpoint;
-    if (modelInput) modelInput.value = connection.model;
+    if (endpointInput && endpointInput.value !== connection.endpoint) endpointInput.value = connection.endpoint;
+    if (modelInput && modelInput.value !== connection.model) modelInput.value = connection.model;
     endpointInput?.dispatchEvent(new Event("input", { bubbles: true }));
     modelInput?.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -255,10 +261,10 @@ function corsSetting(): string {
 
 function updateStatus(status: string, detail: string): void {
   const element = document.getElementById("neptune-hermes-status");
-  if (element) {
-    element.className = `hermes-status ${status}`;
-    element.textContent = detail;
-  }
+  if (!element) return;
+  const className = `hermes-status ${status}`;
+  if (element.className !== className) element.className = className;
+  setTextIfChanged(element, detail);
 }
 
 function connectionSummary(connection: Record<string, unknown>): string {
@@ -268,6 +274,10 @@ function connectionSummary(connection: Record<string, unknown>): string {
   if (typeof connection.skillsCount === "number") parts.push(`${connection.skillsCount} compétence(s)`);
   if (connection.runs === true) parts.push("missions longues détectées");
   return `${parts.join(" · ")}.`;
+}
+
+function setTextIfChanged(element: HTMLElement | null, value: string): void {
+  if (element && element.textContent !== value) element.textContent = value;
 }
 
 function escapeHtml(value: string): string {
