@@ -4,6 +4,9 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -59,5 +62,50 @@ func TestBundledInstallerSeparatesBootstrapCommitFromHermesTag(t *testing.T) {
 	}
 	if !strings.Contains(text, "Repair-InterruptedHermesInstall") {
 		t.Fatal("interrupted ZIP fallback checkouts must be repaired automatically")
+	}
+}
+
+func TestBundledRandomKeyWorksInWindowsPowerShell51(t *testing.T) {
+	installer, err := payload.ReadFile("payload/install.ps1")
+	if err != nil {
+		t.Fatalf("read bundled install.ps1: %v", err)
+	}
+	text := string(installer)
+
+	if strings.Contains(text, "RandomNumberGenerator]::Fill") {
+		t.Fatal("RandomNumberGenerator.Fill is unavailable in Windows PowerShell 5.1")
+	}
+
+	start := strings.Index(text, "function New-RandomKey")
+	if start < 0 {
+		t.Fatal("New-RandomKey function is missing")
+	}
+	endOffset := strings.Index(text[start:], "function Test-Endpoint")
+	if endOffset < 0 {
+		t.Fatal("could not isolate New-RandomKey function")
+	}
+	functionSource := strings.TrimSpace(text[start : start+endOffset])
+
+	script := functionSource + `
+$key = New-RandomKey
+if (-not $key -or $key.Length -lt 64) { throw 'Generated key is invalid.' }
+Write-Output $key
+`
+	testScript := filepath.Join(t.TempDir(), "random-key-smoke.ps1")
+	if err := os.WriteFile(testScript, []byte(script), 0o600); err != nil {
+		t.Fatalf("write Windows PowerShell smoke script: %v", err)
+	}
+
+	cmd := exec.Command(
+		"powershell.exe",
+		"-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+		"-File", testScript,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("New-RandomKey failed in Windows PowerShell 5.1: %v\n%s", err, output)
+	}
+	if len(strings.TrimSpace(string(output))) < 64 {
+		t.Fatalf("Windows PowerShell returned an invalid key: %q", output)
 	}
 }
