@@ -15,8 +15,21 @@ try {
   go build -trimpath -ldflags '-s -w' -o (Join-Path $Out 'NeptuneHermesHost.exe') ./cmd/host
 
   Copy-Item (Join-Path $Out 'NeptuneHermesHost.exe') (Join-Path $Payload 'NeptuneHermesHost.exe') -Force
-  Copy-Item (Join-Path $RuntimeRoot 'assets\install.ps1') (Join-Path $Payload 'install.ps1') -Force
-  Copy-Item (Join-Path $RuntimeRoot 'assets\start-runtime.ps1') (Join-Path $Payload 'start-runtime.ps1') -Force
+
+  $installerSource = Join-Path $RuntimeRoot 'assets\install.ps1'
+  $installerTarget = Join-Path $Payload 'install.ps1'
+  $installerText = [System.IO.File]::ReadAllText($installerSource)
+  $installerText = $installerText.Replace("runtimeVersion = '1.8.2'", "runtimeVersion = '1.8.4'")
+  $installerText = $installerText.Replace(
+    'Neptune Hermes est installé et opérationnel avec un contexte de 65 536 jetons.',
+    'Neptune Hermes est installé et opérationnel. Le profil local compatible a été sélectionné automatiquement.'
+  )
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($installerTarget, $installerText, $utf8NoBom)
+
+  $runtimeSource = Join-Path $RuntimeRoot 'assets\start-runtime-v184.ps1'
+  [scriptblock]::Create([System.IO.File]::ReadAllText($runtimeSource)) | Out-Null
+  Copy-Item $runtimeSource (Join-Path $Payload 'start-runtime.ps1') -Force
 
   Write-Host 'Building NeptuneSetup.exe'
   go test ./cmd/setup
