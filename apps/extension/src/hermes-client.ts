@@ -139,7 +139,7 @@ export async function callHermesAgent(
 
   const system = purpose === "browser-planning"
     ? `${systemInstruction}\n\nMode Neptune Browser Planner : n’exécute aucun outil Hermes, n’ouvre aucun navigateur serveur, n’écris dans aucune mémoire et réponds uniquement dans le format JSON demandé. Neptune exécutera lui-même les actions dans le navigateur local après validation.`
-    : `${systemInstruction}\n\nTu es le cerveau agentique optionnel de Neptune. Tu peux utiliser les compétences, la mémoire et les outils configurés dans Hermes. Les outils s’exécutent sur l’hôte Hermes, jamais silencieusement dans le navigateur Neptune. Ne prétends pas avoir manipulé l’onglet local de Neptune.`;
+    : `${systemInstruction}\n\nTu es le cerveau agentique intégré de Neptune. Tu peux utiliser les compétences, la mémoire et les outils locaux de Hermes. Les outils s’exécutent sur l’hôte Hermes, jamais silencieusement dans le navigateur Neptune. Ne prétends pas avoir manipulé l’onglet local de Neptune.`;
   const cleanMessages: ChatMessage[] = [
     { role: "system", content: system.slice(0, 16_000) },
     ...messages.slice(-18).map((message) => ({
@@ -331,7 +331,7 @@ function authHeaders(apiKey: string): Record<string, string> {
 function requireApiKey(apiKey?: string): string {
   const clean = apiKey?.trim() ?? "";
   if (clean.length < 8) {
-    throw new Error("La clé du serveur Hermes est absente ou trop courte. Configurez API_SERVER_KEY dans Hermes.");
+    throw new Error("La clé locale de Hermes intégré est indisponible. Utilisez Diagnostiquer et réparer Hermes dans Neptune.");
   }
   return clean;
 }
@@ -358,15 +358,15 @@ function hermesHttpError(status: number, payload: Record<string, unknown> | null
       : typeof payload?.message === "string"
         ? payload.message
         : `HTTP ${status}`;
-  if (status === 401 || status === 403) return new Error("Hermes a refusé l’authentification. Vérifiez API_SERVER_KEY.");
-  if (status === 404) return new Error("L’API Hermes attendue n’est pas disponible. Mettez Hermes Agent à jour et activez API_SERVER_ENABLED.");
+  if (status === 401 || status === 403) return new Error("Hermes intégré a perdu sa liaison sécurisée. Utilisez Diagnostiquer et réparer Hermes.");
+  if (status === 404) return new Error("Le moteur Hermes intégré est incomplet ou incompatible. Utilisez Diagnostiquer et réparer Hermes.");
   return new Error(`Hermes a refusé la requête : ${message}`);
 }
 
 function normalizeHermesNetworkError(error: unknown, endpoint: string): Error {
   if (error instanceof DOMException && error.name === "AbortError") return error;
   if (error instanceof TypeError) {
-    return new Error(`Connexion impossible à ${endpoint}. Vérifiez que « hermes gateway » est démarré et que API_SERVER_CORS_ORIGINS contient ${getNeptuneExtensionOrigin()}.`);
+    return new Error("Hermes intégré ne répond pas. Neptune peut le redémarrer depuis Diagnostiquer et réparer Hermes.");
   }
   return error instanceof Error ? error : new Error("Connexion Hermes impossible.");
 }
