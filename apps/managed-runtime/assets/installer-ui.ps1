@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory = $true)][string]$InstallScript,
   [Parameter(Mandatory = $true)][string]$HostSource,
   [Parameter(Mandatory = $true)][string]$StartScriptSource,
-  [Parameter(Mandatory = $true)][string]$StoreUrl
+  [Parameter(Mandatory = $true)][string]$StoreUrl,
+  [Parameter(Mandatory = $true)][string]$SetupPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -120,6 +121,7 @@ $process.add_ErrorDataReceived({ param($sender, $eventArgs) if ($eventArgs.Data)
 $script:completed = $false
 $script:storeOpened = $false
 $script:exitCode = 1
+$script:allowClose = $false
 
 function Set-FriendlyStep([string]$line) {
   if ([string]::IsNullOrWhiteSpace($line)) { return }
@@ -182,9 +184,7 @@ $timer.Interval = [TimeSpan]::FromMilliseconds(220)
 $timer.add_Tick({
   $line = $null
   while ($queue.TryDequeue([ref]$line)) { Set-FriendlyStep $line }
-  while ($errorQueue.TryDequeue([ref]$line)) {
-    Add-Content -Path $stderrPath -Value $line -Encoding UTF8
-  }
+  while ($errorQueue.TryDequeue([ref]$line)) { Add-Content -Path $stderrPath -Value $line -Encoding UTF8 }
 
   if (-not $script:completed -and $process.HasExited) {
     $script:completed = $true
@@ -209,10 +209,10 @@ $timer.add_Tick({
       }
     } else {
       $statusText.Text = 'Neptune n’a pas pu terminer l’installation'
-      $detailText.Text = 'Aucune configuration manuelle n’est nécessaire. Relancez simplement l’installateur ; il reprendra les éléments déjà téléchargés.'
+      $detailText.Text = 'Aucune configuration manuelle n’est nécessaire. Le bouton ci-dessous relance une installation propre et réutilise les éléments valides.'
       $stepText.Text = "Le diagnostic a été enregistré dans : $logRoot"
       $footnote.Text = 'Le support Neptune peut utiliser ces journaux sans vous demander de commandes techniques.'
-      $primaryButton.Content = 'Réessayer'
+      $primaryButton.Content = 'Réessayer automatiquement'
       $primaryButton.IsEnabled = $true
     }
   }
@@ -223,20 +223,18 @@ $primaryButton.add_Click({
   if ($script:exitCode -eq 0) {
     Start-Process $StoreUrl -ErrorAction SilentlyContinue
   } else {
+    $script:allowClose = $true
     $window.Close()
-    Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList @(
-      '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File',
-      (Quote-Argument $PSCommandPath), '-InstallScript', (Quote-Argument $InstallScript),
-      '-HostSource', (Quote-Argument $HostSource), '-StartScriptSource', (Quote-Argument $StartScriptSource),
-      '-StoreUrl', (Quote-Argument $StoreUrl)
-    ) -WindowStyle Hidden
+    Start-Process -FilePath $SetupPath -ErrorAction SilentlyContinue
   }
 })
-$secondaryButton.add_Click({ $window.Close() })
+$secondaryButton.add_Click({ $script:allowClose = $true; $window.Close() })
 $window.add_Closing({
+  param($sender, $eventArgs)
+  if ($script:allowClose) { return }
   if (-not $script:completed -and -not $process.HasExited) {
     $answer = [System.Windows.MessageBox]::Show('L’installation est encore en cours. Voulez-vous vraiment l’interrompre ?', 'Neptune', 'YesNo', 'Warning')
-    if ($answer -ne 'Yes') { $_.Cancel = $true; return }
+    if ($answer -ne 'Yes') { $eventArgs.Cancel = $true; return }
     try { $process.Kill() } catch { }
   }
 })
