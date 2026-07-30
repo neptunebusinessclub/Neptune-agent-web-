@@ -5,6 +5,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+try {
+  $consoleEncoding = New-Object System.Text.UTF8Encoding($false)
+  [Console]::OutputEncoding = $consoleEncoding
+  $OutputEncoding = $consoleEncoding
+} catch { }
+
 $ExtensionId = 'mhjkecpebpekcdbnhfmdiemlkfaafidh'
 $HermesTag = 'v2026.7.7.2'
 $LlamaTag = 'b9637'
@@ -57,6 +63,38 @@ function Download-WithHash {
     throw "Empreinte SHA-256 incorrecte pour $Url"
   }
   Move-Item $temporary $Destination -Force
+}
+
+function Get-InstalledMemoryInfo {
+  $bytes = 0
+
+  try {
+    $modules = @(Get-CimInstance Win32_PhysicalMemory -ErrorAction Stop)
+    if ($modules.Count -gt 0) {
+      $sum = ($modules | Measure-Object -Property Capacity -Sum).Sum
+      if ($sum) { $bytes = [double]$sum }
+    }
+  } catch { }
+
+  if ($bytes -le 0) {
+    try {
+      $bytes = [double](Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory
+    } catch {
+      throw "Neptune n'a pas pu déterminer la mémoire installée sur cet ordinateur."
+    }
+  }
+
+  return [pscustomobject]@{
+    Bytes = $bytes
+    GiB = [math]::Round($bytes / 1GB, 1)
+  }
+}
+
+function Get-ContextLength {
+  param([double]$InstalledBytes)
+  if ($InstalledBytes -ge 31GB) { return 65536 }
+  if ($InstalledBytes -ge 23GB) { return 32768 }
+  return 16384
 }
 
 function Ensure-Hermes {
@@ -144,7 +182,7 @@ model:
   default: Qwen3-4B-Q4_K_M
   base_url: http://127.0.0.1:8080/v1
   api_key: no-key-required
-  context_length: 65536
+  context_length: $ContextLength
 "@
   Write-Utf8NoBom -Path (Join-Path $HermesHome 'config.yaml') -Content $config
 
@@ -162,6 +200,7 @@ OPENAI_API_KEY=no-key-required
     endpoint = 'http://127.0.0.1:8642'
     apiKey = $apiKey
     model = 'Qwen3-4B-Q4_K_M'
+    contextLength = $ContextLength
     runtimeVersion = '1.8.0'
   } | ConvertTo-Json
   Write-Utf8NoBom -Path $ConnectionPath -Content $connection
@@ -200,10 +239,12 @@ start "" /min powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy
   & icacls.exe (Join-Path $HermesHome '.env') /inheritance:r /grant:r $aclIdentity | Out-Null
 }
 
-$ramGb = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-if ($ramGb -lt 16) {
-  throw "Neptune Hermes local nécessite au moins 16 Go de mémoire vive. Mémoire détectée : $ramGb Go."
+$memoryInfo = Get-InstalledMemoryInfo
+if ($memoryInfo.Bytes -lt 15GB) {
+  throw "Neptune Hermes local nécessite 16 Go de RAM installée (tolérance Windows incluse). Mémoire détectée : $($memoryInfo.GiB) Go."
 }
+$ContextLength = Get-ContextLength -InstalledBytes $memoryInfo.Bytes
+Write-Step "Mémoire installée détectée : $($memoryInfo.GiB) Go. Contexte local adapté automatiquement : $ContextLength jetons."
 
 New-Item -ItemType Directory -Force -Path $Root, $HermesHome, $HermesInstall, $LlamaRoot, $ModelRoot | Out-Null
 Ensure-Hermes

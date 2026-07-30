@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"fmt"
@@ -14,6 +15,19 @@ import (
 
 //go:embed payload/*
 var payload embed.FS
+
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+func preparePayload(name string, content []byte) []byte {
+	if filepath.Ext(name) != ".ps1" || bytes.HasPrefix(content, utf8BOM) {
+		return content
+	}
+
+	prepared := make([]byte, 0, len(utf8BOM)+len(content))
+	prepared = append(prepared, utf8BOM...)
+	prepared = append(prepared, content...)
+	return prepared
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -47,6 +61,7 @@ func run() error {
 		if len(content) == 0 {
 			return errors.New("une ressource d’installation Neptune est vide")
 		}
+		content = preparePayload(name, content)
 		if writeErr := os.WriteFile(filepath.Join(temporary, name), content, 0o600); writeErr != nil {
 			return writeErr
 		}
