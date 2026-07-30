@@ -148,7 +148,7 @@ function Set-FriendlyStep([string]$line) {
     }
     'Téléchargement du cerveau local' {
       $progress.Value = 58
-      $statusText.Text = 'Téléchargement de l’intelligence locale'
+      $statusText.Text = "Téléchargement de l'intelligence locale"
       $stepText.Text = 'Environ 2,5 Go. Le téléchargement peut prendre plusieurs minutes.'
       break
     }
@@ -199,8 +199,8 @@ $timer.add_Tick({
       $progress.Value = 100
       $statusText.Text = 'Installation terminée'
       $detailText.Text = 'Le moteur Neptune est opérationnel. Il reste uniquement à confirmer son ajout dans Chrome.'
-      $stepText.Text = 'Chrome va ouvrir la fiche officielle Neptune. Cliquez sur « Ajouter à Chrome », puis ouvrez Neptune depuis l’icône Extensions.'
-      $footnote.Text = 'Cette confirmation Chrome est la seule action requise après l’installation.'
+      $stepText.Text = "Chrome va ouvrir la fiche officielle Neptune. Cliquez sur « Ajouter à Chrome », puis ouvrez Neptune depuis l'icône Extensions."
+      $footnote.Text = "Cette confirmation Chrome est la seule action requise après l'installation."
       $primaryButton.Content = 'Ajouter Neptune à Chrome'
       $primaryButton.IsEnabled = $true
       if (-not $script:storeOpened) {
@@ -208,8 +208,8 @@ $timer.add_Tick({
         Start-Process $StoreUrl -ErrorAction SilentlyContinue
       }
     } else {
-      $statusText.Text = 'Neptune n’a pas pu terminer l’installation'
-      $detailText.Text = 'Aucune configuration manuelle n’est nécessaire. Le bouton ci-dessous relance une installation propre et réutilise les éléments valides.'
+      $statusText.Text = "Neptune n'a pas pu terminer l'installation"
+      $detailText.Text = "Aucune configuration manuelle n'est nécessaire. Le bouton ci-dessous relance une installation propre et réutilise les éléments valides."
       $stepText.Text = "Le diagnostic a été enregistré dans : $logRoot"
       $footnote.Text = 'Le support Neptune peut utiliser ces journaux sans vous demander de commandes techniques.'
       $primaryButton.Content = 'Réessayer automatiquement'
@@ -233,13 +233,13 @@ $window.add_Closing({
   param($sender, $eventArgs)
   if ($script:allowClose) { return }
   if (-not $script:completed -and -not $process.HasExited) {
-    $answer = [System.Windows.MessageBox]::Show('L’installation est encore en cours. Voulez-vous vraiment l’interrompre ?', 'Neptune', 'YesNo', 'Warning')
+    $answer = [System.Windows.MessageBox]::Show("L'installation est encore en cours. Voulez-vous vraiment l'interrompre ?", 'Neptune', 'YesNo', 'Warning')
     if ($answer -ne 'Yes') { $eventArgs.Cancel = $true; return }
     try { $process.Kill() } catch { }
   }
 })
 
-if (-not $process.Start()) { throw 'Impossible de démarrer le programme d’installation Neptune.' }
+if (-not $process.Start()) { throw "Impossible de démarrer le programme d'installation Neptune." }
 $process.BeginOutputReadLine()
 $process.BeginErrorReadLine()
 $timer.Start()
