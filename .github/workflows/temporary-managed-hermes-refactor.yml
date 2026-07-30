@@ -3,13 +3,15 @@ name: Temporary managed Hermes refactor
 on:
   push:
     branches: [feat/hermes-managed-zero-config]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   refactor:
-    if: ${{ !contains(github.event.head_commit.message, '[managed-refactor]') }}
+    if: ${{ github.head_ref == 'feat/hermes-managed-zero-config' || github.ref_name == 'feat/hermes-managed-zero-config' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
