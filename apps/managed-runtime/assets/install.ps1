@@ -20,6 +20,7 @@ $HermesTag = 'v2026.7.7.2'
 # where git clone falls back to the ZIP path.
 $HermesInstallerCommit = 'c9de69c6d5ed602059f5e9c9950c150e07b89212'
 $LlamaTag = 'b9637'
+$MinimumHermesContext = 65536
 $Root = Join-Path $env:LOCALAPPDATA 'Neptune\Hermes'
 $HermesHome = Join-Path $Root 'hermes-home'
 $HermesInstall = Join-Path $Root 'hermes-agent'
@@ -103,9 +104,9 @@ function Get-InstalledMemoryInfo {
 
 function Get-ContextLength {
   param([double]$InstalledBytes)
-  if ($InstalledBytes -ge 31GB) { return 65536 }
-  if ($InstalledBytes -ge 23GB) { return 32768 }
-  return 16384
+  # Hermes Agent rejects any model endpoint below 64K. Memory adaptation must
+  # therefore happen through KV-cache quantization, never by reducing context.
+  return $MinimumHermesContext
 }
 
 function Test-GitCheckoutHasHead {
@@ -167,8 +168,6 @@ function Ensure-Hermes {
   Repair-InterruptedHermesInstall
   Write-Step 'Installation du moteur Hermes Agent officiel...'
 
-  # Use a fixed, audited upstream bootstrap that contains the repaired Windows
-  # ZIP checkout path, while still asking it to install the stable Hermes tag.
   $installerUrl = "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HermesInstallerCommit/scripts/install.ps1"
   $installerPath = Join-Path $Root 'hermes-installer-bootstrap.ps1'
   try {
@@ -253,6 +252,12 @@ model:
   base_url: http://127.0.0.1:8080/v1
   api_key: no-key-required
   context_length: $ContextLength
+
+compression:
+  enabled: true
+  threshold: 0.50
+  target_ratio: 0.20
+  protect_last_n: 20
 "@
   Write-Utf8NoBom -Path (Join-Path $HermesHome 'config.yaml') -Content $config
 
@@ -271,7 +276,7 @@ OPENAI_API_KEY=no-key-required
     apiKey = $apiKey
     model = 'Qwen3-4B-Q4_K_M'
     contextLength = $ContextLength
-    runtimeVersion = '1.8.0'
+    runtimeVersion = '1.8.2'
   } | ConvertTo-Json
   Write-Utf8NoBom -Path $ConnectionPath -Content $connection
 
@@ -314,7 +319,7 @@ if ($memoryInfo.Bytes -lt 15GB) {
   throw "Neptune Hermes local nécessite 16 Go de RAM installée (tolérance Windows incluse). Mémoire détectée : $($memoryInfo.GiB) Go."
 }
 $ContextLength = Get-ContextLength -InstalledBytes $memoryInfo.Bytes
-Write-Step "Mémoire installée détectée : $($memoryInfo.GiB) Go. Contexte local adapté automatiquement : $ContextLength jetons."
+Write-Step "Mémoire installée détectée : $($memoryInfo.GiB) Go. Contexte Hermes réel : $ContextLength jetons, cache KV quantifié pour 16 Go."
 
 New-Item -ItemType Directory -Force -Path $Root, $HermesHome, $LlamaRoot, $ModelRoot | Out-Null
 Ensure-Hermes
@@ -325,10 +330,11 @@ Register-NativeHost
 
 Write-Step 'Démarrage et validation de Neptune Hermes...'
 & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $StartScriptPath -Repair
-if (-not (Test-Endpoint 'http://127.0.0.1:8642/health' $apiKey)) {
+if ($LASTEXITCODE -ne 0 -or -not (Test-Endpoint 'http://127.0.0.1:8642/health' $apiKey)) {
   throw 'Hermes a été installé mais sa validation finale a échoué. Consultez les journaux dans %LOCALAPPDATA%\Neptune\Hermes\logs.'
 }
 
-Write-Host "`nNeptune Hermes est installé et opérationnel. Aucune clé ni configuration utilisateur n'est nécessaire." -ForegroundColor Green
+Write-Host "`nNeptune Hermes est installé et opérationnel avec un contexte de 65 536 jetons." -ForegroundColor Green
+Write-Host "Aucune clé ni configuration utilisateur n'est nécessaire." -ForegroundColor Green
 Write-Host 'Vous pouvez maintenant ouvrir Neptune dans Chrome.'
 Start-Sleep -Seconds 3

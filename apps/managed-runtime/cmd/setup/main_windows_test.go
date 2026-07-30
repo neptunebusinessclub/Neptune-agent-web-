@@ -109,3 +109,46 @@ Write-Output $key
 		t.Fatalf("Windows PowerShell returned an invalid key: %q", output)
 	}
 }
+
+func TestManagedHermesNeverConfiguresSub64KContext(t *testing.T) {
+	installer, err := payload.ReadFile("payload/install.ps1")
+	if err != nil {
+		t.Fatalf("read bundled install.ps1: %v", err)
+	}
+	runtime, err := payload.ReadFile("payload/start-runtime.ps1")
+	if err != nil {
+		t.Fatalf("read bundled start-runtime.ps1: %v", err)
+	}
+	installerText := string(installer)
+	runtimeText := string(runtime)
+
+	for _, required := range []string{
+		"$MinimumHermesContext = 65536",
+		"return $MinimumHermesContext",
+		"context_length: $ContextLength",
+		"runtimeVersion = '1.8.2'",
+	} {
+		if !strings.Contains(installerText, required) {
+			t.Fatalf("installer is missing the Hermes 64K contract: %s", required)
+		}
+	}
+	if strings.Contains(installerText, "return 16384") || strings.Contains(installerText, "return 32768") {
+		t.Fatal("installer must never reduce the context below Hermes' 64K minimum")
+	}
+
+	for _, required := range []string{
+		"$MinimumHermesContext = 65536",
+		"[math]::Max($MinimumHermesContext, $configuredContext)",
+		"'--ctx-size', [string]$ContextLength",
+		"'--cache-type-k', 'q4_0'",
+		"'--cache-type-v', 'q4_0'",
+		"Get-ReportedContextLength",
+	} {
+		if !strings.Contains(runtimeText, required) {
+			t.Fatalf("runtime is missing the Hermes 64K guard: %s", required)
+		}
+	}
+	if strings.Contains(runtimeText, "'--cache-type-k', 'q8_0'") || strings.Contains(runtimeText, "'--cache-type-v', 'q8_0'") {
+		t.Fatal("64K runtime must use the lower-memory q4_0 KV cache on 16 GB machines")
+	}
+}
