@@ -86,9 +86,8 @@ $hermesExe = Find-HermesExecutable
 
 $llamaProcess = $null
 if (-not (Test-Endpoint 'http://127.0.0.1:8080/v1/models')) {
-  $ramGb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
   $threads = [math]::Max(2, [math]::Min([Environment]::ProcessorCount - 1, 12))
-  $context = if ($ramGb -ge 24) { 65536 } elseif ($ramGb -ge 16) { 49152 } else { 32768 }
+  $context = 65536
   $llamaArgs = @(
     '--model', $ModelPath,
     '--host', '127.0.0.1',
@@ -122,5 +121,6 @@ $state = [ordered]@{
   hermesPid = if ($hermesProcess) { $hermesProcess.Id } else { $null }
   startedAt = (Get-Date).ToUniversalTime().ToString('o')
   model = 'Qwen3-4B-Q4_K_M'
+  contextLength = 65536
 }
 $state | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
