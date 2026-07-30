@@ -62,8 +62,9 @@ function Ensure-Hermes {
 
   Write-Step 'Installation du moteur Hermes Agent officiel…'
   $installerUrl = "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HermesTag/scripts/install.ps1"
-  $installerText = Invoke-RestMethod -Uri $installerUrl
-  $installerBlock = [scriptblock]::Create([string]$installerText)
+  $installerText = [string](Invoke-RestMethod -Uri $installerUrl)
+  $installerText = $installerText.TrimStart([char]0xFEFF)
+  $installerBlock = [scriptblock]::Create($installerText)
   & $installerBlock -SkipSetup -Tag $HermesTag -HermesHome $HermesHome -InstallDir $HermesInstall
 
   if (-not ($hermesCandidates | Where-Object { Test-Path $_ })) {
@@ -170,8 +171,9 @@ function Register-NativeHost {
 start "" /min powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$StartScriptPath"
 "@ | Set-Content -Path $StartupPath -Encoding ASCII
 
-  & icacls.exe $ConnectionPath /inheritance:r /grant:r "$env:USERNAME:(R,W)" | Out-Null
-  & icacls.exe (Join-Path $HermesHome '.env') /inheritance:r /grant:r "$env:USERNAME:(R,W)" | Out-Null
+  $aclIdentity = "$($env:USERNAME):(R,W)"
+  & icacls.exe $ConnectionPath /inheritance:r /grant:r $aclIdentity | Out-Null
+  & icacls.exe (Join-Path $HermesHome '.env') /inheritance:r /grant:r $aclIdentity | Out-Null
 }
 
 $ramGb = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
