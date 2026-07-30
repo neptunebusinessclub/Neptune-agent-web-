@@ -126,15 +126,14 @@ export async function callHermesAgent(
   const apiKey = requireApiKey(config.apiKey);
   const identity = purpose === "conversation" ? await getOrCreateIdentity() : null;
   const model = config.model?.trim() || DEFAULT_MODEL;
-  const controller = new AbortController();
-  const timeout = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const combined = mergeAbortSignals(signal, controller.signal);
+  const timeoutController = new AbortController();
+  const timeout = globalThis.setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  const combined = mergeAbortSignals(signal, timeoutController.signal);
   const sessionId = identity?.sessionId ?? `neptune-planner-${crypto.randomUUID()}`;
   const headers: Record<string, string> = {
     ...authHeaders(apiKey),
     "Content-Type": "application/json",
-    "X-Hermes-Session-Id": sessionId,
-    "Idempotency-Key": crypto.randomUUID()
+    "X-Hermes-Session-Id": sessionId
   };
   if (identity && purpose === "conversation") headers["X-Hermes-Session-Key"] = identity.sessionKey;
 
@@ -158,22 +157,29 @@ export async function callHermesAgent(
         model,
         messages: cleanMessages,
         temperature: purpose === "browser-planning" ? 0.1 : 0.25,
-        stream: false
+        stream: true
       }),
       signal: combined
     });
-    const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
-    if (!response.ok) throw hermesHttpError(response.status, payload);
-    const content = extractAssistantContent(payload);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+      throw hermesHttpError(response.status, payload);
+    }
+
     const returnedSessionId = response.headers.get("X-Hermes-Session-Id");
     if (identity && returnedSessionId && returnedSessionId !== identity.sessionId) {
       await saveIdentity({ ...identity, sessionId: returnedSessionId, updatedAt: new Date().toISOString() });
     }
+
+    const contentType = response.headers.get("Content-Type") ?? "";
+    const content = contentType.includes("text/event-stream")
+      ? await readHermesEventStream(response, combined)
+      : extractAssistantContent(await response.json().catch(() => null) as Record<string, unknown> | null);
     dispatchHermesStatus("completed", "Réponse Hermes reçue");
     return content;
   } catch (error) {
     if (combined.aborted) {
-      dispatchHermesStatus("stopped", "Requête Hermes interrompue");
+      dispatchHermesStatus("stopped", "Exécution Hermes interrompue");
       throw new DOMException("La requête Hermes a été interrompue.", "AbortError");
     }
     dispatchHermesStatus("error", error instanceof Error ? error.message : "Erreur Hermes");
@@ -185,6 +191,82 @@ export async function callHermesAgent(
 
 export async function resetHermesSession(): Promise<void> {
   await chrome.storage.local.remove(IDENTITY_KEY);
+}
+
+async function readHermesEventStream(response: Response, signal: AbortSignal): Promise<string> {
+  if (!response.body) throw new Error("Hermes n’a pas fourni de flux de réponse.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let answer = "";
+  let completed = false;
+  const cancel = () => void reader.cancel("Neptune stopped Hermes").catch(() => undefined);
+  signal.addEventListener("abort", cancel, { once: true });
+
+  try {
+    while (!completed) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, "\n");
+      let separator = buffer.indexOf("\n\n");
+      while (separator >= 0) {
+        const frame = buffer.slice(0, separator);
+        buffer = buffer.slice(separator + 2);
+        const result = consumeHermesFrame(frame);
+        if (result.delta) answer += result.delta;
+        if (result.done) completed = true;
+        separator = buffer.indexOf("\n\n");
+      }
+    }
+    if (!completed && buffer.trim()) {
+      const result = consumeHermesFrame(buffer);
+      if (result.delta) answer += result.delta;
+    }
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    reader.releaseLock();
+  }
+
+  const clean = answer.trim();
+  if (!clean) throw new Error("Hermes a terminé sans produire de réponse exploitable.");
+  return clean;
+}
+
+function consumeHermesFrame(frame: string): { delta: string; done: boolean } {
+  let eventName = "message";
+  const data: string[] = [];
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event:")) eventName = line.slice(6).trim();
+    if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+  }
+  const payloadText = data.join("\n").trim();
+  if (!payloadText) return { delta: "", done: false };
+  if (payloadText === "[DONE]") return { delta: "", done: true };
+
+  const payload = JSON.parse(payloadText) as Record<string, unknown>;
+  if (eventName === "hermes.tool.progress") {
+    const tool = typeof payload.tool_name === "string" ? payload.tool_name : "outil Hermes";
+    const status = typeof payload.status === "string" ? payload.status : "en cours";
+    const preview = typeof payload.preview === "string" && payload.preview.trim() ? ` · ${payload.preview.slice(0, 140)}` : "";
+    dispatchHermesStatus("working", `${tool} — ${status}${preview}`);
+    return { delta: "", done: false };
+  }
+
+  const choices = Array.isArray(payload.choices) ? payload.choices : [];
+  const first = choices[0];
+  if (!isRecord(first)) return { delta: "", done: false };
+  if (first.finish_reason === "error") {
+    const error = isRecord(payload.error) && typeof payload.error.message === "string"
+      ? payload.error.message
+      : "Hermes a interrompu son exécution sur une erreur.";
+    throw new Error(error);
+  }
+  const delta = isRecord(first.delta) && typeof first.delta.content === "string"
+    ? first.delta.content
+    : isRecord(first.message) && typeof first.message.content === "string"
+      ? first.message.content
+      : "";
+  return { delta, done: false };
 }
 
 function normalizeCapabilities(payload: Record<string, unknown>, health: Record<string, unknown>): HermesCapabilities {
