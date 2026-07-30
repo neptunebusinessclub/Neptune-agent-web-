@@ -16,28 +16,8 @@ jobs:
         with:
           ref: feat/neptune-v16-runtime-hardening
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Repair migration template
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/apply-v16-hardening.mjs')
-          lines = path.read_text().splitlines(True)
-          changed = False
-          for index, line in enumerate(lines):
-              if 'LOCAL_BRAIN_FALLBACK' in line:
-                  lines[index] = '      appendAudit("LOCAL_BRAIN_FALLBACK", `\\${modelId}: \\${errorMessage(error)}`);\n'
-                  changed = True
-          if not changed:
-              raise SystemExit('LOCAL_BRAIN_FALLBACK line not found')
-          path.write_text(''.join(lines))
-          PY
       - name: Apply source hardening
-        run: node scripts/apply-v16-hardening.mjs
-      - name: Keep the workflow graph stable
-        run: git checkout -- .github/workflows/ci.yml
+        run: python scripts/apply_v16_hardening.py
       - name: Commit hardened sources
         run: |
           git config user.name "Neptune CI"
