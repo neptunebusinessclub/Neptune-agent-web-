@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r --if-present test",
+    "test": "pnpm --filter @neptune/extension build && pnpm -r --if-present test:unit && node tests/run-extension-smoke.mjs",
     "dev:api": "pnpm --filter @neptune/worker-api dev",
     "dev:extension": "pnpm --filter @neptune/extension dev",
     "build:extension": "pnpm --filter @neptune/extension build"
