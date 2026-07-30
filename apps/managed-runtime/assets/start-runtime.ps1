@@ -99,7 +99,7 @@ if (-not (Test-Endpoint 'http://127.0.0.1:8080/v1/models')) {
     '--n-gpu-layers', '999'
   )
   $llamaProcess = Start-Process -FilePath $llamaExe -ArgumentList $llamaArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Logs 'llama.out.log') -RedirectStandardError (Join-Path $Logs 'llama.err.log')
-  Wait-Until -TimeoutSeconds 240 -Failure 'Le modèle local n’a pas démarré.' -Condition { Test-Endpoint 'http://127.0.0.1:8080/v1/models' }
+  Wait-Until -TimeoutSeconds 240 -Failure "Le modèle local n'a pas démarré." -Condition { Test-Endpoint 'http://127.0.0.1:8080/v1/models' }
 }
 
 $env:HERMES_HOME = $HermesHome
@@ -113,7 +113,7 @@ $env:PYTHONUTF8 = '1'
 $hermesProcess = $null
 if (-not (Test-Endpoint "$($connection.endpoint)/health" $apiKey)) {
   $hermesProcess = Start-Process -FilePath $hermesExe -ArgumentList @('gateway') -WorkingDirectory $HermesInstall -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Logs 'hermes.out.log') -RedirectStandardError (Join-Path $Logs 'hermes.err.log')
-  Wait-Until -TimeoutSeconds 240 -Failure 'Hermes Agent n’a pas démarré.' -Condition { Test-Endpoint "$($connection.endpoint)/health" $apiKey }
+  Wait-Until -TimeoutSeconds 240 -Failure "Hermes Agent n'a pas démarré." -Condition { Test-Endpoint "$($connection.endpoint)/health" $apiKey }
 }
 
 $state = [ordered]@{

@@ -69,7 +69,7 @@ function Ensure-Hermes {
 
   if (-not ($hermesCandidates | Where-Object { Test-Path $_ })) {
     $found = Get-ChildItem -Path $Root -Filter 'hermes.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $found) { throw 'L’installation officielle de Hermes n’a produit aucun exécutable.' }
+    if (-not $found) { throw "L'installation officielle de Hermes n'a produit aucun exécutable." }
   }
 }
 
@@ -84,7 +84,7 @@ function Ensure-Llama {
   if (-not $asset) { throw "Aucun binaire llama.cpp Windows compatible dans $LlamaTag." }
   $digest = [string]$asset.digest
   $sha = if ($digest -match '^sha256:(.+)$') { $Matches[1] } else { '' }
-  if (-not $sha) { throw 'GitHub n’a pas fourni l’empreinte du binaire llama.cpp.' }
+  if (-not $sha) { throw "GitHub n'a pas fourni l'empreinte du binaire llama.cpp." }
   $archive = Join-Path $Root $asset.name
   Download-WithHash -Url $asset.browser_download_url -Destination $archive -ExpectedSha256 $sha
   Expand-Archive -Path $archive -DestinationPath $LlamaRoot -Force
@@ -107,7 +107,7 @@ function Ensure-Model {
   $file = $tree | Where-Object { $_.path -eq 'Qwen3-4B-Q4_K_M.gguf' } | Select-Object -First 1
   if (-not $file) { throw 'Le modèle Qwen3-4B-Q4_K_M officiel est introuvable.' }
   $sha = [string]$file.lfs.oid
-  if (-not $sha -or $sha.Length -ne 64) { throw 'Hugging Face n’a pas fourni l’empreinte du modèle.' }
+  if (-not $sha -or $sha.Length -ne 64) { throw "Hugging Face n'a pas fourni l'empreinte du modèle." }
   Download-WithHash -Url 'https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf?download=true' -Destination $ModelPath -ExpectedSha256 $sha
 }
 
@@ -194,6 +194,6 @@ if (-not (Test-Endpoint 'http://127.0.0.1:8642/health' $apiKey)) {
   throw 'Hermes a été installé mais sa validation finale a échoué. Consultez les journaux dans %LOCALAPPDATA%\Neptune\Hermes\logs.'
 }
 
-Write-Host "`nNeptune Hermes est installé et opérationnel. Aucune clé ni configuration utilisateur n’est nécessaire." -ForegroundColor Green
+Write-Host "`nNeptune Hermes est installé et opérationnel. Aucune clé ni configuration utilisateur n'est nécessaire." -ForegroundColor Green
 Write-Host 'Vous pouvez maintenant ouvrir Neptune dans Chrome.'
 Start-Sleep -Seconds 3
