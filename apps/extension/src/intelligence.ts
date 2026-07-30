@@ -1,11 +1,12 @@
 import type { BrowserAction } from "@neptune/protocol";
+import { callHermesAgent, type HermesPurpose } from "./hermes-client";
 import {
   getLocalLanguageModelApi,
   type LocalLanguageModelSession,
   type LocalModelAvailability
 } from "./local-model-runtime";
 
-export type ProviderId = "chrome-local" | "mammouth" | "openai-compatible";
+export type ProviderId = "chrome-local" | "mammouth" | "openai-compatible" | "hermes";
 export type TrustLevel = "prudent" | "assisted" | "controlled";
 
 export type ProviderConfig = {
@@ -25,6 +26,10 @@ export type AgentReply = {
   actions: BrowserAction[];
 };
 
+export type IntelligenceOptions = {
+  purpose?: HermesPurpose;
+};
+
 const MAX_MESSAGES = 18;
 const MAX_ACTIONS = 24;
 const BLOCKED_GOAL = /\b(payer|paiement|acheter|commande|carte bancaire|iban|virement|mot de passe|password|supprimer le compte|signature|signer|contrat)\b/i;
@@ -39,6 +44,10 @@ export function isBrowserTask(text: string): boolean {
 
 export function isForbiddenGoal(text: string): boolean {
   return BLOCKED_GOAL.test(text);
+}
+
+export function isHermesProvider(provider: ProviderConfig): boolean {
+  return provider.id === "hermes";
 }
 
 export async function getChromeAiAvailability(): Promise<LocalModelAvailability> {
@@ -82,7 +91,8 @@ export async function askIntelligence(
   provider: ProviderConfig,
   userName: string,
   messages: ChatTurn[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: IntelligenceOptions = {}
 ): Promise<string> {
   const cleanMessages = messages.slice(-MAX_MESSAGES).map((message) => ({
     role: message.role,
@@ -95,6 +105,17 @@ export async function askIntelligence(
     }
     const transcript = cleanMessages.map((message) => `${message.role === "user" ? "Utilisateur" : "Neptune"}: ${message.content}`).join("\n\n");
     return chromeSession!.prompt(transcript, signal ? { signal } : undefined);
+  }
+
+  if (provider.id === "hermes") {
+    return callHermesAgent(
+      provider,
+      userName,
+      cleanMessages,
+      systemPrompt(userName),
+      signal,
+      options.purpose ?? "conversation"
+    );
   }
 
   return callOpenAiCompatible(provider, [
@@ -127,6 +148,15 @@ export async function planBrowserTask(
   if (provider.id === "chrome-local") {
     if (!chromeSession || chromeSessionOwner !== userName) await prepareChromeAi(userName, () => undefined);
     raw = await chromeSession!.prompt(prompt, signal ? { signal } : undefined);
+  } else if (provider.id === "hermes") {
+    raw = await callHermesAgent(
+      provider,
+      userName,
+      [{ role: "user", content: `Objectif : ${goal}${pageSection}` }],
+      plannerPrompt(userName, trustLevel),
+      signal,
+      "browser-planning"
+    );
   } else {
     raw = await callOpenAiCompatible(provider, [
       { role: "system", content: plannerPrompt(userName, trustLevel) },
@@ -235,7 +265,7 @@ async function callOpenAiCompatible(
   if (!model) throw new Error("Aucun modèle cloud n’est sélectionné.");
 
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 90_000);
+  const timeout = globalThis.setTimeout(() => controller.abort(), 90_000);
   const combinedSignal = signal ?? controller.signal;
   try {
     const response = await fetch(`${base}/chat/completions`, {
@@ -259,7 +289,7 @@ async function callOpenAiCompatible(
     if (typeof content !== "string" || !content.trim()) throw new Error("Le moteur cloud a renvoyé une réponse vide.");
     return content.trim();
   } finally {
-    window.clearTimeout(timeout);
+    globalThis.clearTimeout(timeout);
   }
 }
 
@@ -267,7 +297,7 @@ function normalizeEndpoint(endpoint?: string): string {
   const raw = endpoint?.trim().replace(/\/$/, "") ?? "";
   if (!raw) throw new Error("L’adresse API du moteur cloud n’est pas configurée.");
   const url = new URL(raw);
-  if (!( ["https:", "http:"].includes(url.protocol))) throw new Error("L’adresse API doit utiliser HTTP ou HTTPS.");
+  if (!["https:", "http:"].includes(url.protocol)) throw new Error("L’adresse API doit utiliser HTTP ou HTTPS.");
   if (url.protocol === "http:" && !["127.0.0.1", "localhost"].includes(url.hostname)) {
     throw new Error("Une adresse cloud doit utiliser HTTPS.");
   }
@@ -277,7 +307,7 @@ function normalizeEndpoint(endpoint?: string): string {
 function safeUrl(raw: string): string | undefined {
   try {
     const url = new URL(raw);
-    if (!( ["http:", "https:"].includes(url.protocol))) return undefined;
+    if (!["http:", "https:"].includes(url.protocol)) return undefined;
     url.username = "";
     url.password = "";
     return url.toString();
