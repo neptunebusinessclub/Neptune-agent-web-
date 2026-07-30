@@ -10,6 +10,7 @@ const storage = new Map<string, unknown>();
 beforeEach(() => {
   storage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.stubGlobal("chrome", {
     runtime: { getURL: () => "chrome-extension://neptune-test/" },
     storage: {
@@ -125,11 +126,7 @@ describe("Hermes conversation bridge", () => {
   });
 
   it("turns an aborted Hermes stream into an AbortError", async () => {
-    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) { streamController = controller; },
-      cancel() { streamController = undefined; }
-    });
+    const stream = new ReadableStream<Uint8Array>();
     vi.stubGlobal("fetch", vi.fn(async () => new Response(stream, {
       status: 200,
       headers: { "Content-Type": "text/event-stream" }
