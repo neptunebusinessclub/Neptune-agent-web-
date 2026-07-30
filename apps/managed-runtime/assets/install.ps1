@@ -335,6 +335,6 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Endpoint 'http://127.0.0.1:8642/health' $
 }
 
 Write-Host "`nNeptune Hermes est installé et opérationnel avec un contexte de 65 536 jetons." -ForegroundColor Green
-Write-Host 'Aucune clé ni configuration utilisateur n’est nécessaire.' -ForegroundColor Green
+Write-Host "Aucune clé ni configuration utilisateur n'est nécessaire." -ForegroundColor Green
 Write-Host 'Vous pouvez maintenant ouvrir Neptune dans Chrome.'
 Start-Sleep -Seconds 3
