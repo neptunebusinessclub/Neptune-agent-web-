@@ -8,6 +8,7 @@
     "build": "wrangler deploy --dry-run --outdir dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
     "db:migrate:local": "wrangler d1 migrations apply neptune-agent-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply neptune-agent-db --remote"
   },
