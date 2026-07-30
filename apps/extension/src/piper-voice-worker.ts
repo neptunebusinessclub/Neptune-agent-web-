@@ -19,9 +19,9 @@ const EMBEDDED_VOICES = {
     name: "Voix féminine",
     files: ["fr_FR-siwis-medium.onnx", "fr_FR-siwis-medium.onnx.json"]
   },
-  "fr_FR-tom-medium": {
+  "fr_FR-upmc-medium": {
     name: "Voix masculine",
-    files: ["fr_FR-tom-medium.onnx", "fr_FR-tom-medium.onnx.json"]
+    files: ["fr_FR-upmc-medium.onnx", "fr_FR-upmc-medium.onnx.json"]
   }
 } as const satisfies Record<string, EmbeddedVoice>;
 
