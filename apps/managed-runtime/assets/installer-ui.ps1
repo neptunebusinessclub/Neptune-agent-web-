@@ -2,6 +2,7 @@ param(
   [Parameter(Mandatory = $true)][string]$InstallScript,
   [Parameter(Mandatory = $true)][string]$HostSource,
   [Parameter(Mandatory = $true)][string]$StartScriptSource,
+  [Parameter(Mandatory = $true)][string]$UninstallSource,
   [Parameter(Mandatory = $true)][string]$StoreUrl,
   [Parameter(Mandatory = $true)][string]$SetupPath
 )
@@ -97,7 +98,8 @@ $arguments = @(
   '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
   '-File', (Quote-Argument $InstallScript),
   '-HostSource', (Quote-Argument $HostSource),
-  '-StartScriptSource', (Quote-Argument $StartScriptSource)
+  '-StartScriptSource', (Quote-Argument $StartScriptSource),
+  '-UninstallSource', (Quote-Argument $UninstallSource)
 ) -join ' '
 
 $startInfo = New-Object System.Diagnostics.ProcessStartInfo
