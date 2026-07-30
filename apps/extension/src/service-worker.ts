@@ -32,10 +32,11 @@ const WAKE_STATUS_STORAGE_KEY = "neptune.backgroundWakeStatus.v1";
 const WAKE_CONFIG_STORAGE_KEY = "neptune.backgroundWakeConfig.v1";
 const PENDING_TRANSCRIPT_KEY = "neptune.pendingVoiceTranscript.v1";
 const ASSISTANT_WINDOW_KEY = "neptune.voiceAssistantWindowId.v1";
+const MISSION_CONTROL_KEY = "neptune.missionControl.v1";
 const PREFERENCES_KEY = "neptune.preferences.v2";
 const OFFSCREEN_PATH = "offscreen.html";
 const SIDEPANEL_PATH = "sidepanel.html";
-let stopped = false;
+type MissionControl = { generation: number; status: "running" | "stopped"; updatedAt: string };
 let creatingOffscreen: Promise<void> | null = null;
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -60,18 +61,20 @@ chrome.runtime.onMessage.addListener((request: ExtensionRequest & { target?: str
 
 async function handleRequest(request: ExtensionRequest): Promise<unknown> {
   switch (request.type) {
-    case "GET_STATUS":
-      return { version: chrome.runtime.getManifest().version, stopped, workTab: publicTab(await getWorkTabIfPresent()), wake: await getWakeStatus() };
+    case "GET_STATUS": {
+      const control = await getMissionControl();
+      return { version: chrome.runtime.getManifest().version, stopped: control.status === "stopped", missionControl: control, workTab: publicTab(await getWorkTabIfPresent()), wake: await getWakeStatus() };
+    }
     case "GET_ACTIVE_TAB":
       return { tab: publicTab(await getActiveWebTab()) };
-    case "START_MISSION":
-      stopped = false;
-      return { tab: publicTab(await establishWorkspace(request.workspaceMode ?? "new-tab", request.initialUrl)) };
+    case "START_MISSION": {
+      const control = await startMissionControl();
+      return { tab: publicTab(await establishWorkspace(request.workspaceMode ?? "new-tab", request.initialUrl)), missionControl: control };
+    }
     case "GET_WORK_TAB":
       return { tab: publicTab(await getWorkTab()) };
     case "STOP_MISSION":
-      stopped = true;
-      return { stopped: true };
+      return stopMissionControl();
     case "EXECUTE_ACTION":
       return executeAction(request.action, request.approved);
     case "START_WAKE_LISTENER":
@@ -112,7 +115,7 @@ async function establishWorkspace(mode: WorkspaceMode, initialUrl?: string): Pro
 
 async function executeAction(action: BrowserAction, approved: boolean): Promise<unknown> {
   enforcePolicy(action, approved);
-  if (stopped) throw new Error("MISSION_STOPPED: mission arrêtée par l’utilisateur");
+  await assertMissionRunning();
   switch (action.type) {
     case "OPEN_URL": {
       if (!action.url) throw new Error("OPEN_URL requires an URL");
@@ -136,8 +139,7 @@ async function executeAction(action: BrowserAction, approved: boolean): Promise<
     case "ASK_APPROVAL":
       throw new Error("Human approval required");
     case "STOP_TASK":
-      stopped = true;
-      return { stopped: true };
+      return stopMissionControl();
     default:
       return executeInWorkTab(action);
   }
@@ -163,7 +165,37 @@ async function executeInWorkTab(action: BrowserAction): Promise<unknown> {
     action
   }), Math.max(12_000, (action.delayMs ?? 0) + 7_000));
   if (!response?.ok) throw new Error(response?.error ?? "L’action sur la page a échoué");
+  await assertMissionRunning();
   return response.result ?? response;
+}
+
+async function getMissionControl(): Promise<MissionControl> {
+  const stored = await chrome.storage.session.get(MISSION_CONTROL_KEY);
+  const value = stored[MISSION_CONTROL_KEY] as Partial<MissionControl> | undefined;
+  return {
+    generation: typeof value?.generation === "number" ? value.generation : 0,
+    status: value?.status === "stopped" ? "stopped" : "running",
+    updatedAt: typeof value?.updatedAt === "string" ? value.updatedAt : new Date(0).toISOString()
+  };
+}
+
+async function startMissionControl(): Promise<MissionControl> {
+  const previous = await getMissionControl();
+  const next: MissionControl = { generation: previous.generation + 1, status: "running", updatedAt: new Date().toISOString() };
+  await chrome.storage.session.set({ [MISSION_CONTROL_KEY]: next });
+  return next;
+}
+
+async function stopMissionControl(): Promise<{ stopped: true; missionControl: MissionControl }> {
+  const previous = await getMissionControl();
+  const next: MissionControl = { ...previous, status: "stopped", updatedAt: new Date().toISOString() };
+  await chrome.storage.session.set({ [MISSION_CONTROL_KEY]: next });
+  return { stopped: true, missionControl: next };
+}
+
+async function assertMissionRunning(): Promise<void> {
+  const control = await getMissionControl();
+  if (control.status === "stopped") throw new Error("MISSION_STOPPED: mission arrêtée par l’utilisateur");
 }
 
 async function focusTab(tab: chrome.tabs.Tab): Promise<void> {

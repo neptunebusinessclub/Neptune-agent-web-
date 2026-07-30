@@ -56,6 +56,7 @@ type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   onProgress?: ((progress: number, detail: string) => void) | undefined;
+  timeoutId: number;
 };
 
 const PREFERENCES_KEY = "neptune.preferences.v2";
@@ -153,6 +154,7 @@ export async function playLocalText(
   const audio = new Audio(url);
   currentAudio = audio;
   currentAudioUrl = url;
+  attachAudioMeter(audio);
   await new Promise<void>((resolve, reject) => {
     audio.onended = () => resolve();
     audio.onerror = () => reject(new Error("La lecture de la voix locale a échoué."));
@@ -202,6 +204,7 @@ function installSpeechProxy(): void {
       const audio = new Audio(url);
       currentAudio = audio;
       currentAudioUrl = url;
+      attachAudioMeter(audio);
       audio.onended = () => {
         if (generation === playbackGeneration) utterance.dispatchEvent(new Event("end"));
         cleanupAudio(audio, url);
@@ -246,6 +249,7 @@ function getWorker(): Worker {
       return;
     }
     pending.delete(message.requestId);
+    window.clearTimeout(request.timeoutId);
     if (message.type === "ERROR") {
       request.reject(new Error(message.message));
       return;
@@ -267,7 +271,12 @@ function requestWorker(
 ): Promise<unknown> {
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
-    pending.set(requestId, { resolve, reject, onProgress });
+    const timeoutId = window.setTimeout(() => {
+      pending.delete(requestId);
+      reject(new Error("Le moteur vocal local ne répond pas. Rechargez Neptune puis réessayez."));
+      resetVoiceWorker(new Error("Voice worker timeout"));
+    }, type === "SYNTHESIZE" ? 90_000 : 45_000);
+    pending.set(requestId, { resolve, reject, onProgress, timeoutId });
     getWorker().postMessage({ type, requestId, ...payload });
   });
 }
@@ -275,8 +284,39 @@ function requestWorker(
 function resetVoiceWorker(reason: unknown): void {
   worker?.terminate();
   worker = null;
-  for (const request of pending.values()) request.reject(reason);
+  for (const request of pending.values()) {
+    window.clearTimeout(request.timeoutId);
+    request.reject(reason);
+  }
   pending.clear();
+}
+
+function attachAudioMeter(audio: HTMLAudioElement): void {
+  const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return;
+  try {
+    const context = new AudioContextClass();
+    const sourceNode = context.createMediaElementSource(audio);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    sourceNode.connect(analyser);
+    analyser.connect(context.destination);
+    const values = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      if (audio.paused || audio.ended) {
+        window.dispatchEvent(new CustomEvent("neptune-audio-level", { detail: { level: 0 } }));
+        void context.close();
+        return;
+      }
+      analyser.getByteFrequencyData(values);
+      const level = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length * 255);
+      window.dispatchEvent(new CustomEvent("neptune-audio-level", { detail: { level } }));
+      window.requestAnimationFrame(tick);
+    };
+    void context.resume().then(tick);
+  } catch {
+    // The voice remains functional when the analyser is unavailable.
+  }
 }
 
 function cleanupAudio(audio: HTMLAudioElement, url: string): void {

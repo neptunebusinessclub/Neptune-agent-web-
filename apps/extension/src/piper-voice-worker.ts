@@ -27,13 +27,14 @@ const EMBEDDED_VOICES = {
 } as const;
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
+const extensionRoot = new URL("./", self.location.href);
 const runtime = globalThis as typeof globalThis & { fetch: typeof fetch };
 runtime.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const sourceUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const file = Object.values(EMBEDDED_VOICES)
     .flatMap((voice) => voice.files)
     .find((candidate) => sourceUrl.endsWith(`/${candidate}`) || sourceUrl.endsWith(candidate));
-  if (file) return nativeFetch(chrome.runtime.getURL(`voices/${file}`));
+  if (file) return nativeFetch(new URL(`voices/${file}`, extensionRoot));
   return nativeFetch(input, init);
 };
 

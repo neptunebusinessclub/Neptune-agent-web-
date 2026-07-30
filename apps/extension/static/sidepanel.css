@@ -9,6 +9,7 @@
   --blue: #4388ff;
   --violet: #7657ff;
   --pink: #f04cc6;
+  --audio-level: 0;
 }
 * { box-sizing: border-box; }
 html, body { min-width: 330px; min-height: 100%; margin: 0; }
@@ -75,8 +76,8 @@ h1, h2, h3, p { margin: 0; }
 .onboarding-actions { display: grid; grid-template-columns: auto 1fr; gap: 9px; }
 
 .neptune-hologram { position: relative; display: grid; place-items: center; margin: 0 auto; border-radius: 50%; isolation: isolate; }
-.neptune-hologram.full { width: min(246px, 72vw); aspect-ratio: 1; }
-.neptune-hologram.compact { width: 112px; height: 112px; }
+.neptune-hologram.full { --spectrum-radius: 92px; width: min(246px, 72vw); aspect-ratio: 1; }
+.neptune-hologram.compact { --spectrum-radius: 42px; width: 112px; height: 112px; }
 .spectrum-ring { position: absolute; inset: 0; border-radius: 50%; animation: spectrum-rotate 18s linear infinite; }
 .spectrum-bar {
   --angle: calc((360deg / var(--count)) * var(--i));
@@ -88,13 +89,13 @@ h1, h2, h3, p { margin: 0; }
   border-radius: 999px;
   background: linear-gradient(to top, rgba(68,99,255,.12), var(--cyan) 60%, #fff);
   box-shadow: 0 0 9px rgba(70,190,255,.52);
-  transform-origin: 50% calc(var(--count) * .22px + 86px);
-  transform: translate(-50%, -100%) rotate(var(--angle)) translateY(calc(-1 * (var(--count) * .20px + 49px))) scaleY(.36);
+  transform-origin: center;
+  transform: translate(-50%, -50%) rotate(var(--angle)) translateY(calc(-1 * var(--spectrum-radius))) scaleY(calc(.36 + var(--audio-level) * 1.15));
   opacity: .42;
   animation: spectrum-breathe 2.8s ease-in-out infinite;
   animation-delay: calc(var(--i) * -42ms);
 }
-.neptune-hologram.compact .spectrum-bar { width: 2px; height: 13px; transform-origin: 50% 55px; transform: translate(-50%, -100%) rotate(var(--angle)) translateY(-42px) scaleY(.38); }
+.neptune-hologram.compact .spectrum-bar { width: 2px; height: 13px; transform-origin: center; transform: translate(-50%, -50%) rotate(var(--angle)) translateY(calc(-1 * var(--spectrum-radius))) scaleY(calc(.38 + var(--audio-level) * 1.05)); }
 .spectrum-aura { position: absolute; inset: 19%; border-radius: 50%; background: radial-gradient(circle, rgba(99,223,255,.28), rgba(82,91,255,.20) 38%, rgba(118,62,255,.08) 58%, transparent 72%); filter: blur(7px); animation: aura-pulse 3.6s ease-in-out infinite; }
 .spectrum-core { position: relative; display: grid; place-items: center; width: 38%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #edffff 0 4%, #6ce5ff 13%, #5669ff 42%, #261d79 72%, #080a25 100%); box-shadow: inset -13px -16px 27px rgba(0,0,0,.43), inset 8px 8px 20px rgba(255,255,255,.15), 0 0 30px rgba(68,186,255,.72), 0 0 76px rgba(115,70,255,.4); }
 .spectrum-core i { position: absolute; border-radius: 50%; border: 1px solid rgba(255,255,255,.15); }

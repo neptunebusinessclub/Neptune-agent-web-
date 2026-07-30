@@ -54,8 +54,8 @@ const embeddedPiperRuntimePlugin = {
       if (!normalized.includes("@mintplex-labs/piper-tts-web")) return null;
       let contents = await readFile(args.path, "utf8");
       contents = contents
-        .replace(/["']https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/onnxruntime-web\/1\.18\.0\/["']/g, 'chrome.runtime.getURL("voices/runtime/")')
-        .replace(/["']https:\/\/cdn\.jsdelivr\.net\/npm\/@diffusionstudio\/piper-wasm@1\.0\.0\/build\/piper_phonemize["']/g, 'chrome.runtime.getURL("voices/runtime/piper_phonemize")');
+        .replace(/["']https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/onnxruntime-web\/1\.18\.0\/["']/g, 'new URL("voices/runtime/", self.location.href).href')
+        .replace(/["']https:\/\/cdn\.jsdelivr\.net\/npm\/@diffusionstudio\/piper-wasm@1\.0\.0\/build\/piper_phonemize["']/g, 'new URL("voices/runtime/piper_phonemize", self.location.href).href');
       return { loader: "js", contents };
     });
   }

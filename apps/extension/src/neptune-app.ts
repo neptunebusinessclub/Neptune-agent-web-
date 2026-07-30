@@ -28,6 +28,7 @@ import {
   getLocalModelCatalog,
   getLocalModelSelection,
   isWebGpuAvailable,
+  recommendModelId,
   saveLocalModelSelection,
   type LocalModelSelection
 } from "./local-model-runtime";
@@ -152,7 +153,7 @@ let advancedOpen = false;
 let detailsOpen = false;
 let busy = false;
 let typing = false;
-let actionLocked = false;
+const pendingActions = new Set<string>();
 let blockedMessage = "";
 let transientWarning = "";
 let workspacePrompt: WorkspacePrompt | null = null;
@@ -215,11 +216,9 @@ async function initialize(): Promise<void> {
   }
 
   render();
-  void prepareSelectedVoice(false).then(() => {
-    if (!preferences.onboardingComplete && preferences.onboardingStep === 0) {
-      speak("Bonjour. Je suis Neptune. Comment dois-je vous appeler ?");
-    }
-  });
+  if (!preferences.onboardingComplete && preferences.onboardingStep === 0) {
+    void prepareSelectedVoice(false);
+  }
   if (preferences.onboardingComplete) {
     void refreshBrainState();
     if (messages.length === 0) addMessage("assistant", `Bonjour ${preferences.preferredName || ""}. Donnez-moi un objectif : je choisirai avec vous le meilleur espace de travail.`);
@@ -234,15 +233,29 @@ function bindEvents(): void {
     event.preventDefault();
     if ((event.target as HTMLElement).id === "composer") void submitMessage(draft);
   });
+  app.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.target as HTMLElement).id === "preferred-name") {
+      event.preventDefault();
+      if (canContinueOnboarding()) void nextOnboardingStep();
+    }
+  });
+  window.addEventListener("neptune-audio-level", (event) => {
+    const level = Number((event as CustomEvent<{ level?: number }>).detail?.level ?? 0);
+    document.documentElement.style.setProperty("--audio-level", String(Math.max(0, Math.min(1, level))));
+  });
 }
 
 async function dispatchClick(event: Event): Promise<void> {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
-  if (!button || button.disabled || actionLocked) return;
+  if (!button || button.disabled) return;
   event.preventDefault();
   const action = button.dataset.action ?? "";
   const value = button.dataset.value ?? "";
-  actionLocked = true;
+  const actionKey = `${action}:${value}`;
+  if (pendingActions.has(actionKey)) return;
+  pendingActions.add(actionKey);
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
   transientWarning = "";
   try {
     switch (action) {
@@ -284,6 +297,7 @@ async function dispatchClick(event: Event): Promise<void> {
         break;
       case "test-provider": await testProvider(); break;
       case "prepare-brain": await prepareBalancedBrain(); break;
+      case "retry-voice": await prepareSelectedVoice(true); break;
       case "clear-history":
         messages = [];
         await chrome.storage.local.set({ [STORAGE_MESSAGES]: messages });
@@ -301,19 +315,35 @@ async function dispatchClick(event: Event): Promise<void> {
     orbState = "error";
     render();
   } finally {
-    actionLocked = false;
+    pendingActions.delete(actionKey);
+    if (button.isConnected) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
   }
 }
 
 function handleInput(event: Event): void {
   const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
   switch (target.id) {
-    case "preferred-name": preferences.preferredName = target.value.slice(0, 80); break;
+    case "preferred-name": {
+      preferences.preferredName = target.value.slice(0, 80);
+      const nextButton = app.querySelector<HTMLButtonElement>("button[data-action='onboarding-next']");
+      if (nextButton) nextButton.disabled = preferences.preferredName.trim().length < 2;
+      void savePreferences();
+      break;
+    }
     case "settings-name": preferences.preferredName = target.value.slice(0, 80); void savePreferences(); break;
     case "draft": draft = target.value.slice(0, 10_000); break;
     case "provider-endpoint": preferences.endpoint = target.value.slice(0, 500); break;
     case "provider-model": preferences.model = target.value.slice(0, 200); break;
     case "provider-secret": secretDraft = target.value.slice(0, 1_000); break;
+    case "advanced-local-model": {
+      const applyButton = app.querySelector<HTMLButtonElement>("button[data-action='select-local-model']");
+      if (applyButton) applyButton.dataset.value = target.value;
+      break;
+    }
+    case "advanced-provider": void selectProvider(target.value as ProviderId); break;
   }
 }
 
@@ -374,10 +404,14 @@ async function prepareSelectedVoice(preview: boolean): Promise<void> {
     }
     voiceState = "ready";
     voiceProgress = 100;
+    if (orbState === "error") orbState = "idle";
+    transientWarning = "";
     appendAudit("VOICE_READY", voice.label);
   } catch (error) {
     voiceState = "error";
-    transientWarning = `La voix intégrée n’a pas pu être préparée : ${errorMessage(error)}`;
+    orbState = "error";
+    appendAudit("VOICE_ERROR", errorMessage(error));
+    transientWarning = "La voix intégrée n’a pas pu démarrer. Rechargez Neptune ou utilisez Réessayer.";
   }
   render();
 }
@@ -394,10 +428,11 @@ async function testVoiceActivation(): Promise<void> {
 
 async function ensureBalancedSelection(force: boolean): Promise<void> {
   const current = await getLocalModelSelection();
+  const recommended = recommendModelId(getLocalModelCatalog());
   const next: LocalModelSelection = force || current.engine !== "webllm"
-    ? { engine: "webllm", modelId: BALANCED_LOCAL_MODEL_ID }
+    ? { engine: "webllm", modelId: recommended || BALANCED_LOCAL_MODEL_ID }
     : current;
-  if (next.modelId !== BALANCED_LOCAL_MODEL_ID && force) next.modelId = BALANCED_LOCAL_MODEL_ID;
+  if (force) next.modelId = recommended || BALANCED_LOCAL_MODEL_ID;
   await saveLocalModelSelection(next);
   preferences.providerId = "chrome-local";
   preferences.model = next.modelId;
@@ -416,37 +451,58 @@ async function prepareBalancedBrain(): Promise<void> {
   brainProgress = 0;
   brainError = "";
   render();
-  try {
-    await saveLocalModelSelection({ engine: "webllm", modelId: BALANCED_LOCAL_MODEL_ID });
-    preferences.providerId = "chrome-local";
-    preferences.model = BALANCED_LOCAL_MODEL_ID;
-    await savePreferences();
-    const api = getLocalLanguageModelApi();
-    if (!api) throw new Error("WebGPU n’est pas disponible sur cet ordinateur.");
-    const session = await api.create({
-      initialPrompts: [{ role: "system", content: "Tu es Neptune. Réponds uniquement : prêt." }],
-      monitor(monitor) {
-        monitor.addEventListener("downloadprogress", (event) => {
-          brainProgress = Math.round(Math.max(0, Math.min(1, event.loaded)) * 100);
-          render();
-        });
-      }
-    });
-    await session.prompt("Réponds uniquement : prêt");
-    session.destroy();
-    brainProgress = 100;
-    brainState = "ready";
-    appendAudit("LOCAL_BRAIN_READY", "Neptune Équilibré prêt");
-  } catch (error) {
-    const apiStatus = await getChromeAiAvailability();
-    if (apiStatus !== "unavailable") {
-      await saveLocalModelSelection({ engine: "auto", modelId: BALANCED_LOCAL_MODEL_ID });
-      brainState = apiStatus === "available" ? "ready" : "idle";
-      brainError = "Neptune utilisera automatiquement le meilleur moteur local disponible.";
-    } else {
-      brainState = "error";
-      brainError = errorMessage(error);
+
+  const catalog = getLocalModelCatalog();
+  const recommended = recommendModelId(catalog);
+  const candidates = [...new Set([
+    recommended,
+    BALANCED_LOCAL_MODEL_ID,
+    ...catalog.filter((model) => model.tier === "fast").map((model) => model.id),
+    ...catalog.filter((model) => model.tier === "light").map((model) => model.id)
+  ].filter(Boolean))];
+  let lastError: unknown = null;
+
+  for (const modelId of candidates) {
+    try {
+      await saveLocalModelSelection({ engine: "webllm", modelId });
+      preferences.providerId = "chrome-local";
+      preferences.model = modelId;
+      await savePreferences();
+      const api = getLocalLanguageModelApi();
+      if (!api) throw new Error("Aucun moteur local compatible n’est disponible sur cet ordinateur.");
+      const session = await api.create({
+        initialPrompts: [{ role: "system", content: "Tu es Neptune. Réponds uniquement : prêt." }],
+        monitor(monitor) {
+          monitor.addEventListener("downloadprogress", (event) => {
+            brainProgress = Math.round(Math.max(0, Math.min(1, event.loaded)) * 100);
+            render();
+          });
+        }
+      });
+      await session.prompt("Réponds uniquement : prêt");
+      session.destroy();
+      brainProgress = 100;
+      brainState = "ready";
+      appendAudit("LOCAL_BRAIN_READY", modelId);
+      render();
+      return;
+    } catch (error) {
+      lastError = error;
+      appendAudit("LOCAL_BRAIN_FALLBACK", `${modelId}: ${errorMessage(error)}`);
     }
+  }
+
+  const apiStatus = await getChromeAiAvailability();
+  if (apiStatus === "available") {
+    await saveLocalModelSelection({ engine: "chrome-native", modelId: recommended || BALANCED_LOCAL_MODEL_ID });
+    brainState = "ready";
+    brainProgress = 100;
+    brainError = "Neptune utilise l’intelligence locale intégrée à Chrome.";
+  } else {
+    brainState = "error";
+    orbState = "error";
+    brainError = "Ce poste ne peut pas exécuter le cerveau local. Ouvrez les paramètres avancés pour connecter un fournisseur.";
+    appendAudit("LOCAL_BRAIN_ERROR", errorMessage(lastError));
   }
   render();
 }
@@ -971,7 +1027,7 @@ function renderOnboarding(): string {
 
 function onboardingMarkup(step: number): string {
   if (step === 0) return `<p class="eyebrow">PREMIER ÉCHANGE</p><h2>Comment dois-je vous appeler ?</h2><p>Neptune personnalisera ses validations et ses interventions sans vous exposer de réglages techniques.</p><div class="field"><label for="preferred-name">Votre prénom</label><input id="preferred-name" class="input" value="${escapeAttribute(preferences.preferredName)}" placeholder="Johan" autofocus /></div>`;
-  if (step === 1) return `<p class="eyebrow">VOIX INTÉGRÉE</p><h2>Préférez-vous une voix féminine ou masculine ?</h2><p>Les deux voix sont déjà incluses dans Neptune. Aucun téléchargement ni voix Windows par défaut.</p><div class="voice-pair">${voiceChoice("female")}${voiceChoice("male")}</div>${voiceState === "preparing" ? progressMarkup("Préparation de la voix intégrée", voiceProgress) : ""}`;
+  if (step === 1) return `<p class="eyebrow">VOIX INTÉGRÉE</p><h2>Préférez-vous une voix féminine ou masculine ?</h2><p>Les deux voix sont déjà incluses dans Neptune. Aucun téléchargement ni voix Windows par défaut.</p><div class="voice-pair">${voiceChoice("female")}${voiceChoice("male")}</div>${voiceState === "preparing" ? progressMarkup("Préparation de la voix intégrée", voiceProgress) : voiceState === "error" ? `<div class="notice warning">La voix n'a pas pu démarrer.</div><button type="button" class="primary-button wide-button" data-action="retry-voice">Réessayer la voix</button>` : ""}`;
   if (step === 2) return `<p class="eyebrow">ACTIVATION VOCALE</p><h2>Dites « Neptune » ou « OK Neptune »</h2><p>L’activation est déjà configurée. Ce test vérifie simplement que votre microphone vous entend correctement.</p><div class="wake-test ${activationTested ? "success" : ""}"><span class="wake-dot"></span><strong>${activationTested ? "Activation validée" : listeningWanted ? "Je vous écoute…" : "Prêt pour le test"}</strong></div><button type="button" class="primary-button wide-button" data-action="test-activation">${activationTested ? "Tester à nouveau" : "Tester maintenant"}</button>`;
   return `<p class="eyebrow">CERVEAU LOCAL</p><h2>Neptune Équilibré se prépare automatiquement</h2><p>Le modèle local recommandé est choisi sans vous demander de comprendre des noms techniques. Les alternatives restent accessibles dans les paramètres avancés.</p>${brainStatusMarkup()}<div class="configuration-summary"><span>Voix ${preferences.voiceGender === "female" ? "féminine" : "masculine"}</span><span>Activation vocale prête</span><span>Cerveau local équilibré</span></div>`;
 }
@@ -1034,7 +1090,7 @@ function settingsVoiceButton(gender: VoiceGender): string {
 
 function advancedSettingsMarkup(): string {
   const catalog = getLocalModelCatalog();
-  return `<div class="settings-section advanced"><h3>Intelligence avancée</h3><p>Ces réglages ne sont pas nécessaires pour utiliser Neptune.</p><div class="field"><label>Modèle local</label><select class="select" id="advanced-local-model" onchange="this.closest('.modal')?.querySelector('[data-action=\"select-local-model\"]')?.setAttribute('data-value', this.value)">${catalog.map((model) => `<option value="${escapeAttribute(model.id)}" ${preferences.model === model.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><button type="button" class="ghost-button" data-action="select-local-model" data-value="${escapeAttribute(preferences.model)}">Utiliser ce modèle local</button><div class="field"><label for="advanced-provider">Fournisseur</label><select id="advanced-provider" class="select"><option value="chrome-local" ${preferences.providerId === "chrome-local" ? "selected" : ""}>Local</option><option value="mammouth" ${preferences.providerId === "mammouth" ? "selected" : ""}>Mammouth AI</option><option value="openai-compatible" ${preferences.providerId === "openai-compatible" ? "selected" : ""}>API compatible OpenAI</option></select></div><div class="inline-actions"><button type="button" class="ghost-button" data-action="select-provider" data-value="mammouth">Mammouth</button><button type="button" class="ghost-button" data-action="select-provider" data-value="openai-compatible">API personnalisée</button><button type="button" class="ghost-button" data-action="select-provider" data-value="chrome-local">Revenir au local</button></div>${preferences.providerId !== "chrome-local" ? providerFieldsMarkup() : `<div class="notice ${isWebGpuAvailable() ? "success" : "warning"}">${isWebGpuAvailable() ? "WebGPU disponible." : "WebGPU indisponible : le mode automatique tentera l’intelligence intégrée de Chrome."}</div>`}<div class="field"><label>Niveau de contrôle</label><div class="trust-grid">${trustButton("prudent", "Prudent")}${trustButton("assisted", "Collaborateur")}${trustButton("controlled", "Autonome contrôlé")}</div></div></div>`;
+  return `<div class="settings-section advanced"><h3>Intelligence avancée</h3><p>Ces réglages ne sont pas nécessaires pour utiliser Neptune.</p><div class="field"><label>Modèle local</label><select class="select" id="advanced-local-model">${catalog.map((model) => `<option value="${escapeAttribute(model.id)}" ${preferences.model === model.id ? "selected" : ""}>${escapeHtml(model.name)}</option>`).join("")}</select></div><button type="button" class="ghost-button" data-action="select-local-model" data-value="${escapeAttribute(preferences.model)}">Utiliser ce modèle local</button><div class="field"><label for="advanced-provider">Fournisseur</label><select id="advanced-provider" class="select"><option value="chrome-local" ${preferences.providerId === "chrome-local" ? "selected" : ""}>Local</option><option value="mammouth" ${preferences.providerId === "mammouth" ? "selected" : ""}>Mammouth AI</option><option value="openai-compatible" ${preferences.providerId === "openai-compatible" ? "selected" : ""}>API compatible OpenAI</option></select></div><div class="inline-actions"><button type="button" class="ghost-button" data-action="select-provider" data-value="mammouth">Mammouth</button><button type="button" class="ghost-button" data-action="select-provider" data-value="openai-compatible">API personnalisée</button><button type="button" class="ghost-button" data-action="select-provider" data-value="chrome-local">Revenir au local</button></div>${preferences.providerId !== "chrome-local" ? providerFieldsMarkup() : `<div class="notice ${isWebGpuAvailable() ? "success" : "warning"}">${isWebGpuAvailable() ? "WebGPU disponible." : "WebGPU indisponible : le mode automatique tentera l’intelligence intégrée de Chrome."}</div>`}<div class="field"><label>Niveau de contrôle</label><div class="trust-grid">${trustButton("prudent", "Prudent")}${trustButton("assisted", "Collaborateur")}${trustButton("controlled", "Autonome contrôlé")}</div></div></div>`;
 }
 
 function providerFieldsMarkup(): string {
