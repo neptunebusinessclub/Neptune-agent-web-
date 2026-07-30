@@ -145,7 +145,7 @@ if (-not (Test-Endpoint 'http://127.0.0.1:8080/v1/models')) {
     if ($llamaProcess) { $selectedBackend = 'cpu' }
   }
   if (-not $llamaProcess) {
-    throw 'Le modèle local n’a démarré ni avec Vulkan ni avec le moteur CPU. Utilisez Réparer Hermes depuis Neptune.'
+    throw "Le modèle local n'a démarré ni avec Vulkan ni avec le moteur CPU. Utilisez Réparer Hermes depuis Neptune."
   }
 }
 
