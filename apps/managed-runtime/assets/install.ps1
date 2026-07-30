@@ -24,6 +24,12 @@ function Write-Step([string]$Text) {
   Write-Host "`n[Neptune] $Text" -ForegroundColor Cyan
 }
 
+function Write-Utf8NoBom {
+  param([string]$Path, [string]$Content)
+  $encoding = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
 function New-RandomKey {
   $bytes = New-Object byte[] 48
   [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
@@ -132,30 +138,33 @@ function Write-Configuration {
   } else { '' }
   if (-not $apiKey -or $apiKey.Length -lt 24) { $apiKey = New-RandomKey }
 
-  @"
+  $config = @"
 model:
   provider: custom
   default: Qwen3-4B-Q4_K_M
   base_url: http://127.0.0.1:8080/v1
   api_key: no-key-required
   context_length: 65536
-"@ | Set-Content -Path (Join-Path $HermesHome 'config.yaml') -Encoding UTF8
+"@
+  Write-Utf8NoBom -Path (Join-Path $HermesHome 'config.yaml') -Content $config
 
-  @"
+  $environment = @"
 API_SERVER_ENABLED=true
 API_SERVER_HOST=127.0.0.1
 API_SERVER_PORT=8642
 API_SERVER_KEY=$apiKey
 API_SERVER_CORS_ORIGINS=chrome-extension://$ExtensionId
 OPENAI_API_KEY=no-key-required
-"@ | Set-Content -Path (Join-Path $HermesHome '.env') -Encoding UTF8
+"@
+  Write-Utf8NoBom -Path (Join-Path $HermesHome '.env') -Content $environment
 
-  [ordered]@{
+  $connection = [ordered]@{
     endpoint = 'http://127.0.0.1:8642'
     apiKey = $apiKey
     model = 'Qwen3-4B-Q4_K_M'
     runtimeVersion = '1.8.0'
-  } | ConvertTo-Json | Set-Content -Path $ConnectionPath -Encoding UTF8
+  } | ConvertTo-Json
+  Write-Utf8NoBom -Path $ConnectionPath -Content $connection
 
   return $apiKey
 }
@@ -164,20 +173,21 @@ function Register-NativeHost {
   Write-Step 'Enregistrement sécurisé du moteur auprès de Chrome...'
   Copy-Item $HostSource $HostPath -Force
   Copy-Item $StartScriptSource $StartScriptPath -Force
-  [ordered]@{
+  $manifest = [ordered]@{
     name = 'com.neptune.hermes'
     description = 'Neptune managed Hermes Agent runtime'
     path = $HostPath
     type = 'stdio'
     allowed_origins = @("chrome-extension://$ExtensionId/")
-  } | ConvertTo-Json -Depth 4 | Set-Content -Path $ManifestPath -Encoding UTF8
+  } | ConvertTo-Json -Depth 4
+  Write-Utf8NoBom -Path $ManifestPath -Content $manifest
 
   foreach ($registryPath in @(
     'HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.neptune.hermes',
     'HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.neptune.hermes'
   )) {
     New-Item -Path $registryPath -Force | Out-Null
-    Set-ItemProperty -Path $registryPath -Name '(default)' -Value $ManifestPath
+    Set-Item -Path $registryPath -Value $ManifestPath
   }
 
   @"
