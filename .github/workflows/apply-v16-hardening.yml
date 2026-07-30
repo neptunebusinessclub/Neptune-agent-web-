@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Repair migration template
+        run: node scripts/fix-v16-migration-template.mjs
       - name: Apply source hardening
         run: node scripts/apply-v16-hardening.mjs
       - name: Keep the workflow graph stable
