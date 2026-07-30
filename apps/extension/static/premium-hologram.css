@@ -1,0 +1,200 @@
+:root {
+  --audio-level: 0;
+  --hologram-cyan: #56e6f1;
+  --hologram-teal: #2ca9b8;
+  --hologram-violet: #7b71ff;
+}
+
+.neptune-hologram.full {
+  --spectrum-radius: 78px;
+  width: min(220px, 64vw);
+}
+
+.neptune-hologram.compact {
+  --spectrum-radius: 39px;
+  width: 108px;
+  height: 108px;
+}
+
+.spectrum-ring {
+  inset: 14%;
+  border: 1px solid rgba(76, 224, 235, .26);
+  box-shadow:
+    inset 0 0 22px rgba(52, 197, 211, .07),
+    0 0 18px rgba(73, 206, 226, .08);
+  animation: premium-ring-rotate 42s linear infinite;
+}
+
+.spectrum-ring::before,
+.spectrum-ring::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.spectrum-ring::before {
+  inset: 8%;
+  border: 1px solid rgba(115, 116, 255, .16);
+  box-shadow: 0 0 14px rgba(105, 100, 255, .08);
+}
+
+.spectrum-ring::after {
+  inset: 23%;
+  border: 1px dashed rgba(83, 224, 234, .18);
+  animation: premium-counter-rotate 30s linear infinite;
+}
+
+.spectrum-bar,
+.neptune-hologram.compact .spectrum-bar {
+  width: 1.5px;
+  height: 8px;
+  opacity: .38;
+  background: linear-gradient(to top, rgba(39, 135, 150, .08), var(--hologram-cyan) 72%, rgba(236, 255, 255, .92));
+  box-shadow: 0 0 5px rgba(77, 218, 230, .28);
+  transform-origin: center;
+  transform: translate(-50%, -50%) rotate(var(--angle)) translateY(calc(-1 * var(--spectrum-radius))) scaleY(calc(.86 + var(--audio-level) * .12));
+  animation: premium-shimmer 4.8s ease-in-out infinite;
+  animation-delay: calc(var(--i) * -58ms);
+}
+
+.neptune-hologram.compact .spectrum-bar {
+  width: 1px;
+  height: 5px;
+  transform: translate(-50%, -50%) rotate(var(--angle)) translateY(calc(-1 * var(--spectrum-radius))) scaleY(calc(.88 + var(--audio-level) * .10));
+}
+
+.spectrum-aura {
+  inset: 25%;
+  background: radial-gradient(circle, rgba(89, 229, 238, .13), rgba(56, 109, 173, .08) 43%, transparent 72%);
+  filter: blur(10px);
+  animation: premium-aura 5.2s ease-in-out infinite;
+}
+
+.spectrum-core {
+  width: 29%;
+  overflow: hidden;
+  border: 1px solid rgba(110, 239, 245, .36);
+  background:
+    repeating-radial-gradient(circle, transparent 0 7px, rgba(77, 209, 220, .08) 8px 9px),
+    repeating-conic-gradient(from 14deg, rgba(93, 226, 234, .08) 0 1deg, transparent 1deg 12deg),
+    radial-gradient(circle at 45% 42%, rgba(131, 251, 255, .38), rgba(30, 111, 135, .30) 25%, rgba(12, 42, 67, .68) 58%, rgba(3, 13, 27, .96) 100%);
+  box-shadow:
+    inset 0 0 24px rgba(58, 226, 234, .16),
+    0 0 18px rgba(69, 212, 226, .28),
+    0 0 48px rgba(82, 92, 255, .12);
+}
+
+.spectrum-core::before {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border: 1px dotted rgba(141, 247, 250, .3);
+  border-radius: 50%;
+  animation: premium-counter-rotate 18s linear infinite;
+}
+
+.spectrum-core i:nth-child(1) { inset: 10%; border-color: rgba(105, 226, 235, .25); }
+.spectrum-core i:nth-child(2) { inset: 30%; border-color: rgba(129, 119, 255, .22); opacity: 1; }
+.spectrum-core i:nth-child(3) {
+  width: 7%;
+  background: #dfffff;
+  box-shadow: 0 0 8px #fff, 0 0 17px var(--hologram-cyan);
+}
+
+.neptune-hologram.listening .spectrum-bar {
+  opacity: .58;
+  animation: premium-listen 1.5s ease-in-out infinite;
+  background: linear-gradient(to top, rgba(48, 167, 181, .08), #58e9f2 72%, #f2ffff);
+}
+
+.neptune-hologram.thinking .spectrum-ring { animation-duration: 18s; }
+.neptune-hologram.thinking .spectrum-bar {
+  opacity: .52;
+  animation: premium-think 2.1s ease-in-out infinite;
+  background: linear-gradient(to top, rgba(84, 84, 192, .08), #797fff 72%, #e8ebff);
+}
+
+.neptune-hologram.executing .spectrum-ring { animation-duration: 13s; }
+.neptune-hologram.executing .spectrum-bar {
+  opacity: .62;
+  animation: premium-execute 1.25s ease-in-out infinite;
+}
+
+.neptune-hologram.speaking .spectrum-bar {
+  opacity: .72;
+  animation: premium-speak .82s ease-in-out infinite;
+  background: linear-gradient(to top, rgba(78, 104, 197, .08), #6be5ed 60%, #b3a4ff 88%, #fff);
+  box-shadow: 0 0 7px rgba(95, 218, 231, .38);
+}
+
+.neptune-hologram.permission .spectrum-bar,
+.neptune-hologram.blocked .spectrum-bar {
+  opacity: .56;
+  background: linear-gradient(to top, rgba(180, 123, 33, .08), #ffc668 75%, #fff);
+  box-shadow: 0 0 6px rgba(255, 187, 83, .32);
+}
+
+.neptune-hologram.error .spectrum-bar {
+  opacity: .58;
+  background: linear-gradient(to top, rgba(176, 50, 75, .08), #ff758b 75%, #fff);
+  box-shadow: 0 0 6px rgba(255, 87, 116, .32);
+}
+
+.microphone-recovery {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255, 183, 80, .24);
+  border-radius: 15px;
+  color: #e9eefb;
+  text-align: left;
+  background: rgba(116, 71, 20, .12);
+}
+
+.microphone-recovery p {
+  color: #b9c3d9;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.microphone-recovery-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+button[aria-busy="true"] { cursor: progress; }
+
+@keyframes premium-ring-rotate { to { transform: rotate(360deg); } }
+@keyframes premium-counter-rotate { to { transform: rotate(-360deg); } }
+@keyframes premium-shimmer {
+  0%, 100% { opacity: .28; scale: 1 .92; }
+  50% { opacity: .44; scale: 1 1.01; }
+}
+@keyframes premium-listen {
+  0%, 100% { scale: 1 .94; }
+  50% { scale: 1 1.035; }
+}
+@keyframes premium-think {
+  0%, 100% { scale: 1 .96; }
+  50% { scale: 1 1.025; }
+}
+@keyframes premium-execute {
+  0%, 100% { scale: 1 .95; }
+  50% { scale: 1 1.045; }
+}
+@keyframes premium-speak {
+  0%, 100% { scale: 1 .95; }
+  50% { scale: 1 1.055; }
+}
+@keyframes premium-aura {
+  0%, 100% { transform: scale(.97); opacity: .46; }
+  50% { transform: scale(1.025); opacity: .68; }
+}
+
+@media (max-width: 380px) {
+  .neptune-hologram.full { --spectrum-radius: 69px; width: 198px; }
+  .microphone-recovery-actions { grid-template-columns: 1fr; }
+}
