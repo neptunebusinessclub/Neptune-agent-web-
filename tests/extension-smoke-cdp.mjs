@@ -105,7 +105,7 @@ try {
   await waitFor(cdp, `document.body.innerText.includes("Hermes a répondu depuis le serveur de recette.")`, 20_000);
   const chatRequest = hermes.requests.find((request) => request.path === "/v1/chat/completions");
   assert(chatRequest, "Neptune never sent the conversation to Hermes");
-  assert(chatRequest.authorization === "Bearer neptune-hermes-test-key", "Neptune did not use the automatically managed Hermes key");
+  assert(chatRequest.authorization === "Bearer neptune-hermes-test-key-123456", "Neptune did not use the automatically managed Hermes key");
   assert(/^neptune-/.test(chatRequest.sessionId ?? ""), "Neptune did not send a stable Hermes session ID");
   assert(/^neptune-user-/.test(chatRequest.sessionKey ?? ""), "Neptune did not send a stable Hermes session key");
 
@@ -169,7 +169,7 @@ async function completeOnboardingForIntegrationTest(cdp, endpoint) {
     await chrome.storage.session.set({
       "neptune.managedHermes.connection.v1": {
         endpoint: ${JSON.stringify(endpoint)},
-        apiKey: "neptune-hermes-test-key",
+        apiKey: "neptune-hermes-test-key-123456",
         model: "Qwen3-4B-Q4_K_M",
         runtimeVersion: "1.8.0",
         managed: true
@@ -206,7 +206,7 @@ async function startFakeHermesServer() {
       sessionKey: request.headers["x-hermes-session-key"],
       body
     });
-    if (authorization !== "Bearer neptune-hermes-test-key") {
+    if (authorization !== "Bearer neptune-hermes-test-key-123456") {
       sendJson(response, 401, { error: { message: "invalid key" } });
       return;
     }
