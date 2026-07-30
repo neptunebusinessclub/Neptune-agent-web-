@@ -66,14 +66,12 @@ try {
   await waitFor(cdp, `document.body.innerText.includes("Préférez-vous une voix féminine ou masculine")`, 10_000);
 
   await evaluate(cdp, `document.querySelector("button[data-action='preview-gender'][data-value='female']").click()`);
-  await waitFor(cdp, `document.querySelector("button[data-action='onboarding-next']").disabled === false || document.body.innerText.includes("La voix n’a pas pu démarrer")`, 120_000);
+  await waitForAudit(cdp, "Voix féminine", 120_000);
+  await assertNoVoiceFailure(cdp, exceptions, consoleErrors, "female");
 
-  const bodyText = await evaluate(cdp, `document.body.innerText`);
-  assert(!bodyText.includes("Uncaught ReferenceError"), "The UI exposed an uncaught ReferenceError");
-  assert(!bodyText.includes("chrome is not defined"), "The voice worker still depends on chrome.*");
-  assert(!bodyText.includes("La voix n’a pas pu démarrer"), "The embedded voice failed its real Chromium smoke test");
-  assert(exceptions.length === 0, `Page exceptions: ${exceptions.join(" | ")}`);
-  assert(consoleErrors.filter((message) => /ReferenceError|chrome is not defined|Worker/i.test(message)).length === 0, `Console errors: ${consoleErrors.join(" | ")}`);
+  await evaluate(cdp, `document.querySelector("button[data-action='preview-gender'][data-value='male']").click()`);
+  await waitForAudit(cdp, "Voix masculine", 120_000);
+  await assertNoVoiceFailure(cdp, exceptions, consoleErrors, "male");
 
   const stopState = await evaluate(cdp, `(async () => {
     await chrome.runtime.sendMessage({ type: "START_MISSION", workspaceMode: "new-tab" });
@@ -83,8 +81,23 @@ try {
   })()`);
   assert(stopState, "Mission stop state is not persisted in chrome.storage.session");
 
+  const browserCdp = createCdpClient(await getBrowserWebSocketUrl(port));
+  await browserCdp.connect();
+  await browserCdp.send("Target.closeTarget", { targetId: extensionTarget.id });
+  await waitForTargetGone(port, extensionTarget.id, 10_000);
+  await browserCdp.close();
+
+  await waitFor(cdp, `(async () => {
+    try {
+      const status = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
+      return status?.result?.stopped === true && status?.result?.missionControl?.status === "stopped";
+    } catch {
+      return false;
+    }
+  })()`, 15_000);
+
   await cdp.close();
-  console.log(`Neptune Chromium smoke test passed with extension ${extensionId}.`);
+  console.log(`Neptune Chromium smoke test passed with both voices and durable stop state for extension ${extensionId}.`);
 } catch (error) {
   console.error(chromeOutput.slice(-8_000));
   throw error;
@@ -125,6 +138,14 @@ async function listTargets(port) {
   return response.json();
 }
 
+async function getBrowserWebSocketUrl(port) {
+  const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+  if (!response.ok) throw new Error(`Cannot read Chrome version endpoint: HTTP ${response.status}`);
+  const version = await response.json();
+  if (!version.webSocketDebuggerUrl) throw new Error("Chrome browser CDP endpoint is missing");
+  return version.webSocketDebuggerUrl;
+}
+
 async function waitForExtensionWorker(port) {
   for (let attempt = 0; attempt < 300; attempt += 1) {
     const targets = await listTargets(port).catch(() => []);
@@ -133,6 +154,16 @@ async function waitForExtensionWorker(port) {
     await delay(100);
   }
   throw new Error("Neptune service worker was not activated by Chrome");
+}
+
+async function waitForTargetGone(port, targetId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const targets = await listTargets(port).catch(() => []);
+    if (!targets.some((target) => target.id === targetId)) return;
+    await delay(100);
+  }
+  throw new Error("The Neptune service worker did not stop when requested");
 }
 
 async function waitForPageTarget(port) {
@@ -161,6 +192,23 @@ async function ensureOnboardingLoaded(cdp, url) {
       }
     }
   }
+}
+
+async function waitForAudit(cdp, detail, timeoutMs) {
+  await waitFor(cdp, `(async () => {
+    const stored = await chrome.storage.local.get("neptune.audit.v2");
+    const audit = Array.isArray(stored["neptune.audit.v2"]) ? stored["neptune.audit.v2"] : [];
+    return audit.some((entry) => entry?.type === "VOICE_READY" && entry?.detail === ${JSON.stringify(detail)});
+  })()`, timeoutMs);
+}
+
+async function assertNoVoiceFailure(cdp, exceptions, consoleErrors, label) {
+  const bodyText = await evaluate(cdp, `document.body.innerText`);
+  assert(!bodyText.includes("Uncaught ReferenceError"), `The ${label} voice exposed an uncaught ReferenceError`);
+  assert(!bodyText.includes("chrome is not defined"), `The ${label} voice worker still depends on chrome.*`);
+  assert(!bodyText.includes("La voix n’a pas pu démarrer"), `The embedded ${label} voice failed its real Chromium smoke test`);
+  assert(exceptions.length === 0, `Page exceptions after ${label} voice: ${exceptions.join(" | ")}`);
+  assert(consoleErrors.filter((message) => /ReferenceError|chrome is not defined|Worker/i.test(message)).length === 0, `Console errors after ${label} voice: ${consoleErrors.join(" | ")}`);
 }
 
 function createCdpClient(url) {
