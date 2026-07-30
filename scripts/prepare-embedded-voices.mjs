@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,16 +21,16 @@ const resources = [
     md5: "a407e7e6901feb79c2ea2a5466076cce"
   },
   {
-    target: path.join(voiceDestination, "fr_FR-tom-medium.onnx"),
-    label: "fr_FR-tom-medium.onnx",
-    url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/tom/medium/fr_FR-tom-medium.onnx",
-    md5: "5b460c2394a871e675f5c798af149412"
+    target: path.join(voiceDestination, "fr_FR-upmc-medium.onnx"),
+    label: "fr_FR-upmc-medium.onnx",
+    url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/upmc/medium/fr_FR-upmc-medium.onnx",
+    md5: "6837ede9408c7e1b39fa4a126af9e865"
   },
   {
-    target: path.join(voiceDestination, "fr_FR-tom-medium.onnx.json"),
-    label: "fr_FR-tom-medium.onnx.json",
-    url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/tom/medium/fr_FR-tom-medium.onnx.json",
-    md5: "964d58602df7adf76c2401b070f68ea2"
+    target: path.join(voiceDestination, "fr_FR-upmc-medium.onnx.json"),
+    label: "fr_FR-upmc-medium.onnx.json",
+    url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/upmc/medium/fr_FR-upmc-medium.onnx.json",
+    md5: "574571ae93aba72dbd159582981037da"
   },
   {
     target: path.join(runtimeDestination, "piper_phonemize.data"),
@@ -56,6 +56,10 @@ const resources = [
 
 await mkdir(voiceDestination, { recursive: true });
 await mkdir(runtimeDestination, { recursive: true });
+await Promise.all([
+  rm(path.join(voiceDestination, "fr_FR-tom-medium.onnx"), { force: true }),
+  rm(path.join(voiceDestination, "fr_FR-tom-medium.onnx.json"), { force: true })
+]);
 
 for (const resource of resources) {
   const current = await readFile(resource.target).catch(() => null);
@@ -68,9 +72,7 @@ for (const resource of resources) {
   const response = await fetch(resource.url, { redirect: "follow" });
   if (!response.ok) throw new Error(`Téléchargement impossible pour ${resource.label} : HTTP ${response.status}`);
   const bytes = Buffer.from(await response.arrayBuffer());
-  if (!isValid(bytes, resource.md5)) {
-    throw new Error(`Ressource invalide ou incomplète : ${resource.label}.`);
-  }
+  if (!isValid(bytes, resource.md5)) throw new Error(`Ressource invalide ou incomplète : ${resource.label}.`);
   await writeFile(resource.target, bytes);
 }
 
