@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$RuntimeRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$RuntimeRoot = Split-Path -Parent $PSScriptRoot
 $Out = Join-Path $RuntimeRoot 'dist'
 $Payload = Join-Path $RuntimeRoot 'cmd\setup\payload'
 New-Item -ItemType Directory -Force -Path $Out, $Payload | Out-Null
