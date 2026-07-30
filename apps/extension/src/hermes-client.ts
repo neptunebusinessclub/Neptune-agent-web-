@@ -89,8 +89,8 @@ export async function testHermesConnection(
   const apiKey = requireApiKey(config.apiKey);
   const headers = authHeaders(apiKey);
 
-  const health = await hermesFetchJson(`${endpoint}/health`, { headers, signal }, endpoint);
-  const capabilitiesPayload = await hermesFetchJson(`${endpoint}/v1/capabilities`, { headers, signal }, endpoint);
+  const health = await hermesFetchJson(`${endpoint}/health`, { headers, signal: signal ?? null }, endpoint);
+  const capabilitiesPayload = await hermesFetchJson(`${endpoint}/v1/capabilities`, { headers, signal: signal ?? null }, endpoint);
   const capabilities = normalizeCapabilities(capabilitiesPayload, health);
   if (capabilities.platform !== "hermes-agent") {
     throw new Error("Le serveur répond, mais il ne s’identifie pas comme Hermes Agent.");
@@ -99,7 +99,7 @@ export async function testHermesConnection(
     throw new Error("Cette version de Hermes n’expose pas l’API de conversation requise.");
   }
 
-  const modelsPayload = await hermesFetchJson(`${endpoint}/v1/models`, { headers, signal }, endpoint);
+  const modelsPayload = await hermesFetchJson(`${endpoint}/v1/models`, { headers, signal: signal ?? null }, endpoint);
   const model = resolveHermesModel(modelsPayload, config.model || capabilities.model);
   const skillsCount = capabilities.skillsApi
     ? await fetchSkillsCount(endpoint, headers, signal).catch(() => null)
@@ -215,7 +215,7 @@ function resolveHermesModel(payload: Record<string, unknown>, preferred?: string
 }
 
 async function fetchSkillsCount(endpoint: string, headers: Record<string, string>, signal?: AbortSignal): Promise<number | null> {
-  const payload = await hermesFetchJson(`${endpoint}/v1/skills`, { headers, signal }, endpoint);
+  const payload = await hermesFetchJson(`${endpoint}/v1/skills`, { headers, signal: signal ?? null }, endpoint);
   const source = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.skills) ? payload.skills : null;
   return source ? source.length : null;
 }
