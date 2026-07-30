@@ -19,6 +19,7 @@ $StatePath = Join-Path $Root 'runtime-state.json'
 $ConnectionPath = Join-Path $Root 'connection.json'
 $ConfigPath = Join-Path $HermesHome 'config.yaml'
 $MinimumHermesContext = 65536
+$RuntimeVersion = '1.8.3'
 New-Item -ItemType Directory -Force -Path $Logs | Out-Null
 
 function Write-Utf8NoBom {
@@ -79,9 +80,9 @@ function Write-ManagedConfiguration {
     $Connection | Add-Member -NotePropertyName contextLength -NotePropertyValue $ContextLength
   }
   if ($Connection.PSObject.Properties.Name -contains 'runtimeVersion') {
-    $Connection.runtimeVersion = '1.8.2'
+    $Connection.runtimeVersion = $RuntimeVersion
   } else {
-    $Connection | Add-Member -NotePropertyName runtimeVersion -NotePropertyValue '1.8.2'
+    $Connection | Add-Member -NotePropertyName runtimeVersion -NotePropertyValue $RuntimeVersion
   }
   Write-Utf8NoBom -Path $ConnectionPath -Content ($Connection | ConvertTo-Json)
 
@@ -125,16 +126,6 @@ function Find-LlamaExecutable {
   return $null
 }
 
-function Wait-Endpoint {
-  param([string]$Url, [int]$TimeoutSeconds)
-  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  do {
-    if (Test-Endpoint $Url) { return $true }
-    Start-Sleep -Milliseconds 800
-  } while ((Get-Date) -lt $deadline)
-  return $false
-}
-
 function Wait-Until {
   param([scriptblock]$Condition, [int]$TimeoutSeconds, [string]$Failure)
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -156,16 +147,24 @@ function Get-ReportedContextLength {
   return 0
 }
 
-function Start-LlamaBackend {
+function Get-LogTail {
+  param([string]$Path, [int]$Lines = 30)
+  if (-not (Test-Path $Path)) { return '' }
+  try { return ((Get-Content $Path -Tail $Lines -ErrorAction Stop) -join "`n") } catch { return '' }
+}
+
+function Start-LlamaProfile {
   param(
-    [ValidateSet('vulkan', 'cpu')][string]$Backend,
+    [pscustomobject]$Profile,
     [string]$Executable,
     [int]$ContextLength
   )
+
+  $stdout = Join-Path $Logs "llama-$($Profile.Name).out.log"
+  $stderr = Join-Path $Logs "llama-$($Profile.Name).err.log"
+  Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
+
   $threads = [math]::Max(2, [math]::Min([Environment]::ProcessorCount - 1, 12))
-  $gpuLayers = if ($Backend -eq 'vulkan') { '999' } else { '0' }
-  $stdout = Join-Path $Logs "llama-$Backend.out.log"
-  $stderr = Join-Path $Logs "llama-$Backend.err.log"
   $arguments = @(
     '--model', $ModelPath,
     '--alias', 'Qwen3-4B-Q4_K_M',
@@ -174,25 +173,76 @@ function Start-LlamaBackend {
     '--ctx-size', [string]$ContextLength,
     '--threads', [string]$threads,
     '--parallel', '1',
+    '--batch-size', [string]$Profile.Batch,
+    '--ubatch-size', [string]$Profile.UBatch,
     '--jinja',
     '--rope-scaling', 'yarn',
     '--rope-scale', '2',
     '--yarn-orig-ctx', '32768',
-    '--flash-attn', 'on',
-    '--cache-type-k', 'q4_0',
-    '--cache-type-v', 'q4_0',
-    '--n-gpu-layers', $gpuLayers
+    '--flash-attn', $Profile.FlashAttention,
+    '--cache-type-k', $Profile.CacheK,
+    '--cache-type-v', $Profile.CacheV,
+    '--n-gpu-layers', [string]$Profile.GpuLayers,
+    '--no-warmup',
+    '--log-verbosity', '3'
   )
+  if ($Profile.NoKvOffload) { $arguments += '--no-kv-offload' }
+
   $process = Start-Process -FilePath $Executable -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-  $timeout = if ($Backend -eq 'vulkan') { 90 } else { 240 }
-  if (Wait-Endpoint -Url 'http://127.0.0.1:8080/v1/models' -TimeoutSeconds $timeout) {
-    $reportedContext = Get-ReportedContextLength
-    if ($reportedContext -eq 0 -or $reportedContext -ge 64000) { return $process }
-  }
+  $deadline = (Get-Date).AddSeconds([int]$Profile.Timeout)
+  do {
+    if (Test-Endpoint 'http://127.0.0.1:8080/v1/models') {
+      $reportedContext = Get-ReportedContextLength
+      if ($reportedContext -eq 0 -or $reportedContext -ge 64000) {
+        return [pscustomobject]@{
+          Process = $process
+          Profile = $Profile.Name
+          CacheType = "$($Profile.CacheK)/$($Profile.CacheV)"
+          Backend = $Profile.Backend
+          StdErr = $stderr
+        }
+      }
+    }
+    if (-not (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Milliseconds 900
+  } while ((Get-Date) -lt $deadline)
+
   if ($process -and (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)) {
     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
   }
+  Start-Sleep -Milliseconds 500
   return $null
+}
+
+function Start-CompatibleLlama {
+  param([int]$ContextLength)
+
+  $vulkanExe = Find-LlamaExecutable -Backend 'vulkan'
+  $cpuExe = Find-LlamaExecutable -Backend 'cpu'
+  $profiles = @(
+    [pscustomobject]@{ Name = 'vulkan-q8-host-kv'; Backend = 'vulkan'; CacheK = 'q8_0'; CacheV = 'q8_0'; FlashAttention = 'auto'; GpuLayers = 999; NoKvOffload = $true; Batch = 256; UBatch = 128; Timeout = 120 },
+    [pscustomobject]@{ Name = 'cpu-q8'; Backend = 'cpu'; CacheK = 'q8_0'; CacheV = 'q8_0'; FlashAttention = 'off'; GpuLayers = 0; NoKvOffload = $false; Batch = 256; UBatch = 128; Timeout = 300 },
+    [pscustomobject]@{ Name = 'cpu-q4k-f16v'; Backend = 'cpu'; CacheK = 'q4_0'; CacheV = 'f16'; FlashAttention = 'off'; GpuLayers = 0; NoKvOffload = $false; Batch = 128; UBatch = 64; Timeout = 300 }
+  )
+
+  foreach ($profile in $profiles) {
+    $executable = if ($profile.Backend -eq 'vulkan') { $vulkanExe } else { $cpuExe }
+    if (-not $executable) { continue }
+    Write-Host "[Neptune] Essai du profil local $($profile.Name)..." -ForegroundColor Cyan
+    $result = Start-LlamaProfile -Profile $profile -Executable $executable -ContextLength $ContextLength
+    if ($result) { return $result }
+  }
+
+  $diagnostics = @()
+  foreach ($profile in $profiles) {
+    $path = Join-Path $Logs "llama-$($profile.Name).err.log"
+    $tail = Get-LogTail -Path $path -Lines 20
+    if ($tail) { $diagnostics += "--- $($profile.Name) ---`n$tail" }
+  }
+  $diagnosticPath = Join-Path $Logs 'last-launch-diagnostic.txt'
+  Write-Utf8NoBom -Path $diagnosticPath -Content ($diagnostics -join "`n`n")
+  $summary = if ($diagnostics.Count -gt 0) { $diagnostics[-1] } else { 'Aucun journal llama.cpp exploitable.' }
+  throw "Le modèle local n'a démarré avec aucun profil 64K compatible. Diagnostic : $diagnosticPath`n$summary"
 }
 
 $connection = Read-Connection
@@ -202,7 +252,7 @@ if ($connection.PSObject.Properties.Name -contains 'contextLength') {
   $configuredContext = [int]$connection.contextLength
 }
 $contextLength = [math]::Max($MinimumHermesContext, $configuredContext)
-$requiresMigration = $configuredContext -lt $MinimumHermesContext
+$requiresMigration = $configuredContext -lt $MinimumHermesContext -or [string]$connection.runtimeVersion -ne $RuntimeVersion
 
 if ($Repair -or $requiresMigration) { Stop-TrackedProcesses }
 Write-ManagedConfiguration -Connection $connection -ContextLength $contextLength
@@ -217,22 +267,9 @@ if ((Test-Endpoint 'http://127.0.0.1:8080/v1/models') -and (Test-Endpoint "$($co
 if (-not (Test-Path $ModelPath)) { throw 'Le modèle local Neptune est absent. Relancez NeptuneSetup.exe.' }
 $hermesExe = Find-HermesExecutable
 
-$llamaProcess = $null
-$selectedBackend = 'existing'
+$llamaResult = $null
 if (-not (Test-Endpoint 'http://127.0.0.1:8080/v1/models')) {
-  $vulkanExe = Find-LlamaExecutable -Backend 'vulkan'
-  $cpuExe = Find-LlamaExecutable -Backend 'cpu'
-  if ($vulkanExe) {
-    $llamaProcess = Start-LlamaBackend -Backend 'vulkan' -Executable $vulkanExe -ContextLength $contextLength
-    if ($llamaProcess) { $selectedBackend = 'vulkan' }
-  }
-  if (-not $llamaProcess -and $cpuExe) {
-    $llamaProcess = Start-LlamaBackend -Backend 'cpu' -Executable $cpuExe -ContextLength $contextLength
-    if ($llamaProcess) { $selectedBackend = 'cpu' }
-  }
-  if (-not $llamaProcess) {
-    throw "Le modèle local n'a pas démarré avec un contexte Hermes 64K, ni avec Vulkan ni avec le moteur CPU. Consultez les journaux dans $Logs."
-  }
+  $llamaResult = Start-CompatibleLlama -ContextLength $contextLength
 }
 
 $env:HERMES_HOME = $HermesHome
@@ -251,12 +288,14 @@ if (-not (Test-Endpoint "$($connection.endpoint)/health" $apiKey)) {
 }
 
 $state = [ordered]@{
-  llamaPid = if ($llamaProcess) { $llamaProcess.Id } else { $null }
+  llamaPid = if ($llamaResult) { $llamaResult.Process.Id } else { $null }
   hermesPid = if ($hermesProcess) { $hermesProcess.Id } else { $null }
   startedAt = (Get-Date).ToUniversalTime().ToString('o')
   model = 'Qwen3-4B-Q4_K_M'
   contextLength = $contextLength
-  cacheType = 'q4_0'
-  backend = $selectedBackend
+  cacheType = if ($llamaResult) { $llamaResult.CacheType } else { 'existing' }
+  backend = if ($llamaResult) { $llamaResult.Backend } else { 'existing' }
+  launchProfile = if ($llamaResult) { $llamaResult.Profile } else { 'existing' }
+  runtimeVersion = $RuntimeVersion
 }
 $state | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
