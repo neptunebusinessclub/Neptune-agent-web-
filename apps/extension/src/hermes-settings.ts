@@ -104,12 +104,14 @@ async function connectHermes(button: HTMLButtonElement): Promise<void> {
     const endpoint = endpointInput?.value.trim() || getHermesDefaultEndpoint();
     const model = modelInput?.value.trim() || "hermes-agent";
     const enteredKey = secretInput?.value.trim() || "";
-    const apiKey = enteredKey || await loadSecret("hermes");
-    if (enteredKey) await saveSecret("hermes", enteredKey);
+    const storedKey = await loadSecret("hermes");
+    const apiKey = enteredKey || storedKey;
     if (!apiKey) throw new Error("Saisissez la clé API_SERVER_KEY configurée dans Hermes.");
 
     await ensureHermesHostPermission(endpoint);
     const connection = await testHermesConnection({ endpoint, model, apiKey });
+    if (enteredKey) await saveSecret("hermes", enteredKey);
+    if (secretInput) secretInput.value = "";
     if (endpointInput) endpointInput.value = connection.endpoint;
     if (modelInput) modelInput.value = connection.model;
     endpointInput?.dispatchEvent(new Event("input", { bubbles: true }));
