@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearManagedHermesSession,
+  closeManagedHermesSupervisor,
   ensureManagedHermes,
   getManagedHermesStatus
 } from "./managed-hermes-runtime";
@@ -19,6 +20,7 @@ function event<T>() {
 const session = new Map<string, unknown>();
 
 beforeEach(() => {
+  closeManagedHermesSupervisor();
   session.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
