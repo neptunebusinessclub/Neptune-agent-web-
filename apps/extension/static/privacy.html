@@ -10,7 +10,7 @@
 </head>
 <body>
   <h1>Politique de confidentialité de Neptune</h1>
-  <p>Version du 30 juillet 2026 — Neptune 1.6 Hardened.</p>
+  <p>Version du 30 juillet 2026 — Neptune 1.6.1 Premium Voice.</p>
   <p class="note">Neptune minimise les données transmises. Les préférences, l’historique, le journal des missions, les voix embarquées, les modèles locaux sélectionnés et les clés fournisseur restent dans le profil Chrome de l’utilisateur, sauf lorsqu’une requête doit être envoyée au fournisseur cloud choisi.</p>
 
   <h2>Données conservées localement</h2>
@@ -25,7 +25,7 @@
   </ul>
 
   <h2>Voix françaises embarquées</h2>
-  <p>Les deux modèles vocaux français proposés pendant l’accueil — une voix féminine et une voix masculine — ainsi que Piper, le phonétiseur et les fichiers WebAssembly nécessaires sont inclus dans le package de l’extension.</p>
+  <p>La voix féminine Siwis et la voix masculine UPMC/Pierre, ainsi que Piper, le phonétiseur et les fichiers WebAssembly nécessaires, sont incluses dans le package de l’extension.</p>
   <p>Au premier usage, Neptune copie les ressources déjà contenues dans l’extension vers le stockage privé OPFS de Chrome et vérifie leur écriture avant la synthèse. Cette opération ne contacte aucun service vocal distant.</p>
   <p>Le texte est transformé en audio dans un Web Worker de l’extension. Neptune n’envoie ni le texte à prononcer ni l’audio généré à un service distant de synthèse vocale. La voix Windows n’est pas utilisée dans le parcours normal de Neptune.</p>
 
@@ -34,7 +34,8 @@
   <p>Lorsque l’intelligence intégrée de Chrome ou un modèle WebLLM local est utilisé, les instructions, le contexte utile de la page et les réponses sont traités sur l’ordinateur.</p>
 
   <h2>Activation vocale</h2>
-  <p>Après autorisation du microphone, Neptune peut écouter les expressions « Neptune » et « OK Neptune » lorsque Chrome reste ouvert. Un document d’extension hors écran peut maintenir cette écoute. Les transcriptions nécessaires à la commande sont traitées par les mécanismes de reconnaissance vocale disponibles dans Chrome.</p>
+  <p>La permission microphone est demandée uniquement après une action explicite de l’utilisateur. Après autorisation, Neptune peut écouter les expressions « Neptune » et « OK Neptune » lorsque Chrome reste ouvert. Un document d’extension hors écran peut maintenir cette écoute.</p>
+  <p>Si la permission est refusée ou fermée, l’accueil reste utilisable au clavier et propose de réessayer ultérieurement. Le refus du microphone ne bloque pas l’utilisation générale de Neptune.</p>
 
   <h2>Données transmises</h2>
   <p>Lorsqu’un fournisseur cloud est choisi dans les paramètres avancés, les messages nécessaires à la réponse ou à la planification sont envoyés directement à ce fournisseur selon ses propres conditions. Neptune n’envoie jamais une clé API à un autre fournisseur que celui configuré.</p>
