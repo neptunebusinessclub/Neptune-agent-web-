@@ -32,10 +32,25 @@ export async function planAgentStep(
   context: AgentStepContext,
   signal?: AbortSignal
 ): Promise<AgentDecision> {
-  const raw = await askIntelligence(provider, userName, [{
-    role: "user",
-    content: buildAgentPrompt(userName, trustLevel, context)
-  }], signal);
+  const prompt = buildAgentPrompt(userName, trustLevel, context);
+  let raw: string;
+
+  if (provider.id === "hermes") {
+    try {
+      raw = await askIntelligence({ id: "chrome-local" }, userName, [{ role: "user", content: prompt }], signal, {
+        purpose: "browser-planning"
+      });
+    } catch {
+      raw = await askIntelligence(provider, userName, [{ role: "user", content: prompt }], signal, {
+        purpose: "browser-planning"
+      });
+    }
+  } else {
+    raw = await askIntelligence(provider, userName, [{ role: "user", content: prompt }], signal, {
+      purpose: "browser-planning"
+    });
+  }
+
   const parsed = extractJson(raw);
   const normalized = normalizePlan(parsed, raw);
   const record = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
