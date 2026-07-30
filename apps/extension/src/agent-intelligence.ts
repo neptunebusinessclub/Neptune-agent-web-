@@ -33,21 +33,9 @@ export async function planAgentStep(
   signal?: AbortSignal
 ): Promise<AgentDecision> {
   const prompt = buildAgentPrompt(userName, trustLevel, context);
-  let raw: string;
-
-  if (provider.id === "hermes") {
-    try {
-      raw = await askIntelligence({ id: "chrome-local" }, userName, [{ role: "user", content: prompt }], signal, {
-        purpose: "browser-planning"
-      });
-    } catch (error) {
-      throw new Error(`Hermes reste connecté pour la mémoire et les compétences, mais Neptune ne transmet pas le contenu de votre onglet aux outils Hermes. Le planificateur navigateur local doit être disponible : ${error instanceof Error ? error.message : "moteur local indisponible"}`);
-    }
-  } else {
-    raw = await askIntelligence(provider, userName, [{ role: "user", content: prompt }], signal, {
-      purpose: "browser-planning"
-    });
-  }
+  const raw = await askIntelligence(provider, userName, [{ role: "user", content: prompt }], signal, {
+    purpose: "browser-planning"
+  });
 
   const parsed = extractJson(raw);
   const normalized = normalizePlan(parsed, raw);
