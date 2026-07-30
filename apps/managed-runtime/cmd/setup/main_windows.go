@@ -19,7 +19,10 @@ var payload embed.FS
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-const chromeStoreURL = "https://chromewebstore.google.com/detail/neptune/mhjkecpebpekcdbnhfmdiemlkfaafidh"
+const (
+	chromeStoreURL       = "https://chromewebstore.google.com/detail/neptune/mhjkecpebpekcdbnhfmdiemlkfaafidh"
+	windowsCreateNoWindow = 0x08000000
+)
 
 func preparePayload(name string, content []byte) []byte {
 	if filepath.Ext(name) != ".ps1" || bytes.HasPrefix(content, utf8BOM) {
@@ -89,7 +92,7 @@ func run() error {
 		"-SetupPath", executable,
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NO_WINDOW | syscall.CREATE_NEW_PROCESS_GROUP,
+		CreationFlags: windowsCreateNoWindow | syscall.CREATE_NEW_PROCESS_GROUP,
 		HideWindow:    true,
 	}
 	if err := cmd.Run(); err != nil {
