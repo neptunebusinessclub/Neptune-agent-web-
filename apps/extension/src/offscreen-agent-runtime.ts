@@ -41,22 +41,8 @@ type Preferences = {
   trustLevel?: TrustLevel;
 };
 
-type ConversationMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  tone: "normal" | "warning" | "permission";
-  createdAt: string;
-};
-
-type AuditEntry = { id: string; type: string; detail: string; occurredAt: string };
-
-const STORAGE_MISSION = "neptune.agent.mission.v3";
-const STORAGE_MESSAGES = "neptune.messages.v2";
-const STORAGE_AUDIT = "neptune.audit.v2";
-const STORAGE_PREFERENCES = "neptune.preferences.v2";
-const MAX_MESSAGES = 80;
-const MAX_AUDIT = 240;
+type MessageRole = "user" | "assistant";
+type MessageTone = "normal" | "warning" | "permission";
 
 let mission: AgentMission | null = null;
 let runPromise: Promise<void> | null = null;
@@ -338,36 +324,50 @@ async function blockMission(message: string): Promise<void> {
 }
 
 async function readMission(): Promise<AgentMission | null> {
-  const stored = await chrome.storage.local.get(STORAGE_MISSION);
-  const value = stored[STORAGE_MISSION];
-  return isMission(value) ? value : null;
+  const response = await sendRuntime<AgentMission | null>({
+    type: "AGENT_STATE_READ",
+    resource: "mission"
+  });
+  if (!response.ok) throw new Error(response.error?.message || "Impossible de lire la mission Neptune.");
+  return isMission(response.result) ? response.result : null;
 }
 
 async function saveMission(): Promise<void> {
   if (!mission) return;
   mission.updatedAt = new Date().toISOString();
-  await chrome.storage.local.set({ [STORAGE_MISSION]: mission });
-  await chrome.runtime.sendMessage({ target: "neptune-sidepanel", type: "AGENT_STATE_CHANGED", mission }).catch(() => undefined);
+  const response = await sendRuntime<AgentMission>({
+    type: "AGENT_STATE_WRITE_MISSION",
+    mission
+  });
+  if (!response.ok || !isMission(response.result)) {
+    throw new Error(response.error?.message || "Impossible d’enregistrer le checkpoint Neptune.");
+  }
+  mission = response.result;
 }
 
 async function readPreferences(): Promise<Preferences> {
-  const stored = await chrome.storage.local.get(STORAGE_PREFERENCES);
-  const value = stored[STORAGE_PREFERENCES];
-  return value && typeof value === "object" ? value as Preferences : {};
+  const response = await sendRuntime<Preferences | null>({
+    type: "AGENT_STATE_READ",
+    resource: "preferences"
+  });
+  if (!response.ok) throw new Error(response.error?.message || "Impossible de lire les préférences Neptune.");
+  return response.result && typeof response.result === "object" ? response.result : {};
 }
 
-async function appendMessage(role: ConversationMessage["role"], text: string, tone: ConversationMessage["tone"] = "normal"): Promise<void> {
-  const stored = await chrome.storage.local.get(STORAGE_MESSAGES);
-  const current = Array.isArray(stored[STORAGE_MESSAGES]) ? stored[STORAGE_MESSAGES] as ConversationMessage[] : [];
-  const messages = [...current, { id: crypto.randomUUID(), role, text: text.slice(0, 12_000), tone, createdAt: new Date().toISOString() }].slice(-MAX_MESSAGES);
-  await chrome.storage.local.set({ [STORAGE_MESSAGES]: messages });
+async function appendMessage(role: MessageRole, text: string, tone: MessageTone = "normal"): Promise<void> {
+  const response = await sendRuntime({
+    type: "AGENT_STATE_APPEND_MESSAGE",
+    message: { role, text, tone }
+  });
+  if (!response.ok) throw new Error(response.error?.message || "Impossible d’enregistrer le message de mission.");
 }
 
 async function appendAudit(type: string, detail: string): Promise<void> {
-  const stored = await chrome.storage.local.get(STORAGE_AUDIT);
-  const current = Array.isArray(stored[STORAGE_AUDIT]) ? stored[STORAGE_AUDIT] as AuditEntry[] : [];
-  const audit = [...current, { id: crypto.randomUUID(), type, detail: detail.slice(0, 1_000), occurredAt: new Date().toISOString() }].slice(-MAX_AUDIT);
-  await chrome.storage.local.set({ [STORAGE_AUDIT]: audit });
+  const response = await sendRuntime({
+    type: "AGENT_STATE_APPEND_AUDIT",
+    entry: { type, detail }
+  });
+  if (!response.ok) throw new Error(response.error?.message || "Impossible d’enregistrer le journal de mission.");
 }
 
 async function sendRuntime<T = unknown>(request: Record<string, unknown>): Promise<RuntimeResponse<T>> {
