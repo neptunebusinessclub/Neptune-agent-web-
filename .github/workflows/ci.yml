@@ -13,7 +13,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         id: typecheck
@@ -56,7 +56,7 @@ jobs:
         if: steps.typecheck.outcome == 'failure'
         run: exit 1
 
-      - name: Tests
+      - name: Tests and real Chromium smoke test
         id: tests
         continue-on-error: true
         shell: bash
@@ -72,7 +72,7 @@ jobs:
             echo '### CI — erreurs de tests'
             echo
             echo '```text'
-            tail -n 220 tests.log
+            tail -n 260 tests.log
             echo '```'
           } > tests-comment.md
           gh pr comment "$PR_NUMBER" --body-file tests-comment.md
@@ -106,10 +106,10 @@ jobs:
         if: steps.build.outcome == 'failure'
         run: exit 1
 
-      - name: Validate Neptune 1.5 package
+      - name: Validate Neptune 1.6 package
         shell: bash
         run: |
-          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.5.0'||!m.permissions?.includes('offscreen')||m.permissions?.includes('nativeMessaging')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.6.0'||m.version_name!=='1.6 Hardened'||!m.permissions?.includes('offscreen')||m.permissions?.includes('nativeMessaging')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
           test -f apps/extension/dist/sidepanel.html
           test -f apps/extension/dist/sidepanel.js
           test -f apps/extension/dist/offscreen.html
@@ -131,10 +131,9 @@ jobs:
           test -s apps/extension/dist/voices/runtime/piper_phonemize.wasm
           test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.mjs
           test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.wasm
-          test -f apps/extension/src/neptune-app.ts
-          test -f apps/extension/src/product-config.ts
-          test -f apps/extension/src/product-config.test.ts
           grep -q "planAgentStep" apps/extension/src/neptune-app.ts
+          grep -q "MISSION_CONTROL_KEY" apps/extension/src/service-worker.ts
+          grep -q "createWritable" apps/extension/src/piper-voice-worker.ts
           grep -q "current-tab" apps/extension/src/service-worker.ts
           grep -q "new-window" apps/extension/src/service-worker.ts
           grep -q "Qwen2.5-1.5B" apps/extension/src/product-config.ts
@@ -147,12 +146,16 @@ jobs:
             echo "Legacy UI overlays are still loaded."
             exit 1
           fi
+          if grep -R -n -E "onchange=|onclick=|oninput=" apps/extension/dist; then
+            echo "Inline JavaScript handlers are forbidden in the production package."
+            exit 1
+          fi
           if find apps/extension/dist -name '*.map' -print -quit | grep -q .; then
             echo "Source maps must not ship in the production package."
             exit 1
           fi
-          if grep -E "cdn\.jsdelivr\.net/npm/@diffusionstudio/piper-wasm|cdnjs\.cloudflare\.com/ajax/libs/onnxruntime-web" apps/extension/dist/piper-voice-worker.js; then
-            echo "The packaged voice runtime still depends on a remote CDN."
+          if grep -E "cdn\.jsdelivr\.net/npm/@diffusionstudio/piper-wasm|cdnjs\.cloudflare\.com/ajax/libs/onnxruntime-web|chrome\.runtime" apps/extension/dist/piper-voice-worker.js; then
+            echo "The packaged voice worker still depends on a forbidden runtime or remote CDN."
             exit 1
           fi
           if grep -R -n -E "Neptune Runtime|127\.0\.0\.1:8787|Jeton API Neptune|nativeMessaging" apps/extension/dist; then
@@ -167,12 +170,39 @@ jobs:
         shell: bash
         run: |
           cd apps/extension/dist
-          zip -r ../../../neptune-extension-experience-v1.5.0.zip .
+          zip -r ../../../neptune-extension-hardened-v1.6.0.zip .
 
       - name: Publish production extension
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-extension-experience-v1.5.0
-          path: neptune-extension-experience-v1.5.0.zip
+          name: neptune-extension-hardened-v1.6.0
+          path: neptune-extension-hardened-v1.6.0.zip
           if-no-files-found: error
           retention-days: 90
+
+  windows-smoke:
+    name: Windows Chromium smoke
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build and run real Chromium product test
+        run: pnpm test
