@@ -14,9 +14,12 @@ if (installation.status !== 0) {
   throw new Error(`Chromium provisioning failed with exit code ${installation.status ?? "unknown"}`);
 }
 
+const platformDefaultCache = process.platform === "win32"
+  ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "ms-playwright")
+  : path.join(os.homedir(), ".cache", "ms-playwright");
 const cacheRoot = process.env.PLAYWRIGHT_BROWSERS_PATH && process.env.PLAYWRIGHT_BROWSERS_PATH !== "0"
   ? path.resolve(process.env.PLAYWRIGHT_BROWSERS_PATH)
-  : path.join(os.homedir(), ".cache", "ms-playwright");
+  : platformDefaultCache;
 const binary = findChromium(cacheRoot);
 if (!binary) throw new Error(`Playwright Chromium was installed but no browser binary was found under ${cacheRoot}`);
 console.log(`Neptune smoke test Chromium: ${binary}`);
