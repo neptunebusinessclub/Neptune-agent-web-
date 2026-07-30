@@ -20,11 +20,19 @@ beforeAll(() => {
   });
 });
 
-describe("Neptune local French voices", () => {
-  it("exposes unique friendly French profiles", async () => {
+describe("Neptune embedded French voices", () => {
+  it("exposes exactly one female and one male product voice", async () => {
     const { NEPTUNE_LOCAL_VOICES } = await import("./local-voice-runtime");
-    expect(NEPTUNE_LOCAL_VOICES).toHaveLength(5);
-    expect(new Set(NEPTUNE_LOCAL_VOICES.map((voice) => voice.id)).size).toBe(5);
+    expect(NEPTUNE_LOCAL_VOICES).toHaveLength(2);
+    expect(NEPTUNE_LOCAL_VOICES.map((voice) => voice.id)).toEqual([
+      "fr_FR-siwis-medium",
+      "fr_FR-tom-medium"
+    ]);
+    expect(NEPTUNE_LOCAL_VOICES.map((voice) => voice.name)).toEqual([
+      "Féminine",
+      "Masculine"
+    ]);
+    expect(new Set(NEPTUNE_LOCAL_VOICES.map((voice) => voice.id)).size).toBe(2);
     expect(NEPTUNE_LOCAL_VOICES.every((voice) => voice.id.startsWith("fr_FR-"))).toBe(true);
     expect(NEPTUNE_LOCAL_VOICES.filter((voice) => voice.recommended)).toHaveLength(1);
   });
