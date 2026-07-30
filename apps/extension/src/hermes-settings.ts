@@ -37,7 +37,7 @@ document.addEventListener("click", (event) => {
   const action = button.dataset.hermesAction;
   if (action === "connect") void connectHermes(button);
   if (action === "reset-session") void resetHermesConversation(button);
-  if (action === "copy-origin") void copyOrigin(button);
+  if (action === "copy-cors") void copyCorsSetting(button);
   if (action === "open-docs") void chrome.tabs.create({ url: HERMES_DOCS });
 }, true);
 
@@ -110,8 +110,8 @@ async function connectHermes(button: HTMLButtonElement): Promise<void> {
 
     await ensureHermesHostPermission(endpoint);
     const connection = await testHermesConnection({ endpoint, model, apiKey });
-    endpointInput && (endpointInput.value = connection.endpoint);
-    modelInput && (modelInput.value = connection.model);
+    if (endpointInput) endpointInput.value = connection.endpoint;
+    if (modelInput) modelInput.value = connection.model;
     endpointInput?.dispatchEvent(new Event("input", { bubbles: true }));
     modelInput?.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -141,16 +141,16 @@ async function resetHermesConversation(button: HTMLButtonElement): Promise<void>
   button.disabled = true;
   try {
     await resetHermesSession();
-    updateStatus("ready", "Nouvelle mémoire de conversation Neptune–Hermes prête. Les mémoires gérées par Hermes ne sont pas supprimées.");
+    updateStatus("ready", "Nouvelle session Neptune–Hermes prête. Les mémoires enregistrées dans Hermes ne sont pas supprimées.");
   } finally {
     button.disabled = false;
   }
 }
 
-async function copyOrigin(button: HTMLButtonElement): Promise<void> {
-  await navigator.clipboard.writeText(getNeptuneExtensionOrigin());
+async function copyCorsSetting(button: HTMLButtonElement): Promise<void> {
+  await navigator.clipboard.writeText(corsSetting());
   const original = button.textContent;
-  button.textContent = "Copié";
+  button.textContent = "Ligne copiée";
   window.setTimeout(() => { button.textContent = original; }, 1_200);
 }
 
@@ -170,8 +170,12 @@ function hermesCardMarkup(connection: Record<string, unknown>): string {
     <div class="notice warning"><strong>Architecture sécurisée :</strong> les outils Hermes s’exécutent sur la machine ou le serveur où Hermes est installé. Les actions dans votre onglet restent exécutées et validées par Neptune.</div>
     <div id="neptune-hermes-status" class="hermes-status ${connected ? "connected" : ""}">${escapeHtml(summary)}</div>
     <div class="hermes-actions"><button type="button" class="primary-button" data-hermes-action="connect">${connected ? "Vérifier la connexion" : "Connecter Hermes"}</button><button type="button" class="ghost-button" data-hermes-action="reset-session">Nouvelle session</button></div>
-    <details class="hermes-setup"><summary>Configuration Hermes requise</summary><p>Dans <code>~/.hermes/.env</code>, activez l’API, définissez une clé et autorisez exactement l’origine Neptune ci-dessous, puis lancez <code>hermes gateway</code>.</p><code class="hermes-origin">${escapeHtml(getNeptuneExtensionOrigin())}</code><div class="hermes-actions"><button type="button" class="ghost-button" data-hermes-action="copy-origin">Copier l’origine</button><button type="button" class="ghost-button" data-hermes-action="open-docs">Documentation officielle</button></div></details>
+    <details class="hermes-setup"><summary>Configuration Hermes requise</summary><p>Dans <code>~/.hermes/.env</code>, activez l’API, définissez une clé et copiez exactement cette ligne, puis lancez <code>hermes gateway</code>.</p><code class="hermes-origin">${escapeHtml(corsSetting())}</code><div class="hermes-actions"><button type="button" class="ghost-button" data-hermes-action="copy-cors">Copier la ligne CORS</button><button type="button" class="ghost-button" data-hermes-action="open-docs">Documentation officielle</button></div></details>
   </section>`;
+}
+
+function corsSetting(): string {
+  return `API_SERVER_CORS_ORIGINS=${getNeptuneExtensionOrigin()}`;
 }
 
 function updateStatus(status: string, detail: string): void {
@@ -186,7 +190,7 @@ function connectionSummary(connection: Record<string, unknown>): string {
   if (typeof connection.version === "string" && connection.version) parts.push(`version ${connection.version}`);
   if (typeof connection.model === "string" && connection.model) parts.push(`modèle ${connection.model}`);
   if (typeof connection.skillsCount === "number") parts.push(`${connection.skillsCount} compétence(s)`);
-  if (connection.runs === true) parts.push("missions longues disponibles");
+  if (connection.runs === true) parts.push("missions longues détectées");
   return `${parts.join(" · ")}.`;
 }
 
