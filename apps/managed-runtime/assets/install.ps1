@@ -13,6 +13,12 @@ try {
 
 $ExtensionId = 'mhjkecpebpekcdbnhfmdiemlkfaafidh'
 $HermesTag = 'v2026.7.7.2'
+# The Hermes payload remains pinned to the stable release above. The installer
+# bootstrap is pinned separately to a newer upstream commit because the release
+# tag's Windows ZIP fallback initializes a repository full of untracked files
+# and then performs a non-forced tag checkout, which aborts on fresh machines
+# where git clone falls back to the ZIP path.
+$HermesInstallerCommit = 'c9de69c6d5ed602059f5e9c9950c150e07b89212'
 $LlamaTag = 'b9637'
 $Root = Join-Path $env:LOCALAPPDATA 'Neptune\Hermes'
 $HermesHome = Join-Path $Root 'hermes-home'
@@ -97,22 +103,81 @@ function Get-ContextLength {
   return 16384
 }
 
+function Test-GitCheckoutHasHead {
+  param([string]$RepositoryPath)
+
+  $gitDirectory = Join-Path $RepositoryPath '.git'
+  $headPath = Join-Path $gitDirectory 'HEAD'
+  if (-not (Test-Path $gitDirectory -PathType Container) -or -not (Test-Path $headPath -PathType Leaf)) {
+    return $false
+  }
+
+  try {
+    $head = [string](Get-Content $headPath -Raw -ErrorAction Stop).Trim()
+    if ($head -match '^[0-9a-fA-F]{40,64}$') { return $true }
+    if ($head -notmatch '^ref:\s+(.+)$') { return $false }
+
+    $reference = $Matches[1].Trim()
+    $looseReference = Join-Path $gitDirectory ($reference -replace '/', '\')
+    if (Test-Path $looseReference -PathType Leaf) {
+      $value = [string](Get-Content $looseReference -Raw -ErrorAction SilentlyContinue).Trim()
+      if ($value -match '^[0-9a-fA-F]{40,64}$') { return $true }
+    }
+
+    $packedReferences = Join-Path $gitDirectory 'packed-refs'
+    if (Test-Path $packedReferences -PathType Leaf) {
+      $escapedReference = [regex]::Escape($reference)
+      $packed = Get-Content $packedReferences -ErrorAction SilentlyContinue
+      if ($packed | Where-Object { $_ -match "^[0-9a-fA-F]{40,64}\s+$escapedReference$" }) { return $true }
+    }
+  } catch { }
+
+  return $false
+}
+
+function Repair-InterruptedHermesInstall {
+  $hermesCandidates = @(
+    (Join-Path $HermesInstall 'venv\Scripts\hermes.exe'),
+    (Join-Path $HermesInstall '.venv\Scripts\hermes.exe')
+  )
+  if ($hermesCandidates | Where-Object { Test-Path $_ -PathType Leaf }) { return }
+  if (-not (Test-Path $HermesInstall)) { return }
+  if (Test-GitCheckoutHasHead -RepositoryPath $HermesInstall) { return }
+
+  Write-Step 'Réparation automatique de la tentative Hermes interrompue...'
+  try {
+    Remove-Item -LiteralPath $HermesInstall -Recurse -Force -ErrorAction Stop
+  } catch {
+    throw "Neptune n'a pas pu nettoyer l'installation Hermes incomplète. Fermez les fenêtres utilisant ce dossier puis relancez NeptuneSetup.exe. Détail : $($_.Exception.Message)"
+  }
+}
+
 function Ensure-Hermes {
   $hermesCandidates = @(
     (Join-Path $HermesInstall 'venv\Scripts\hermes.exe'),
     (Join-Path $HermesInstall '.venv\Scripts\hermes.exe')
   )
-  if ($hermesCandidates | Where-Object { Test-Path $_ }) { return }
+  if ($hermesCandidates | Where-Object { Test-Path $_ -PathType Leaf }) { return }
 
+  Repair-InterruptedHermesInstall
   Write-Step 'Installation du moteur Hermes Agent officiel...'
-  $installerUrl = "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HermesTag/scripts/install.ps1"
-  $installerText = [string](Invoke-RestMethod -Uri $installerUrl)
-  $installerText = $installerText.TrimStart([char]0xFEFF)
-  $installerBlock = [scriptblock]::Create($installerText)
-  & $installerBlock -SkipSetup -Tag $HermesTag -HermesHome $HermesHome -InstallDir $HermesInstall
 
-  if (-not ($hermesCandidates | Where-Object { Test-Path $_ })) {
-    $found = Get-ChildItem -Path $Root -Filter 'hermes.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+  # Use a fixed, audited upstream bootstrap that contains the repaired Windows
+  # ZIP checkout path, while still asking it to install the stable Hermes tag.
+  $installerUrl = "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HermesInstallerCommit/scripts/install.ps1"
+  $installerPath = Join-Path $Root 'hermes-installer-bootstrap.ps1'
+  try {
+    Download-WithHash -Url $installerUrl -Destination $installerPath -ExpectedSha256 ''
+    $installerText = [System.IO.File]::ReadAllText($installerPath).TrimStart([char]0xFEFF)
+    $installerBlock = [scriptblock]::Create($installerText)
+    & $installerBlock -SkipSetup -NonInteractive -Tag $HermesTag -HermesHome $HermesHome -InstallDir $HermesInstall
+  } finally {
+    Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+    Remove-Item "$installerPath.download" -Force -ErrorAction SilentlyContinue
+  }
+
+  if (-not ($hermesCandidates | Where-Object { Test-Path $_ -PathType Leaf })) {
+    $found = Get-ChildItem -Path $HermesInstall -Filter 'hermes.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $found) { throw "L'installation officielle de Hermes n'a produit aucun exécutable." }
   }
 }
@@ -246,7 +311,7 @@ if ($memoryInfo.Bytes -lt 15GB) {
 $ContextLength = Get-ContextLength -InstalledBytes $memoryInfo.Bytes
 Write-Step "Mémoire installée détectée : $($memoryInfo.GiB) Go. Contexte local adapté automatiquement : $ContextLength jetons."
 
-New-Item -ItemType Directory -Force -Path $Root, $HermesHome, $HermesInstall, $LlamaRoot, $ModelRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $Root, $HermesHome, $LlamaRoot, $ModelRoot | Out-Null
 Ensure-Hermes
 Ensure-Llama
 Ensure-Model
