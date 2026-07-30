@@ -29,6 +29,8 @@ const EMBEDDED_VOICES = {
 const nativeFetch = globalThis.fetch.bind(globalThis);
 const extensionRoot = new URL("./", self.location.href);
 const runtime = globalThis as typeof globalThis & { fetch: typeof fetch };
+let operationQueue: Promise<void> = Promise.resolve();
+
 runtime.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const sourceUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const file = Object.values(EMBEDDED_VOICES)
@@ -39,10 +41,11 @@ runtime.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Re
 };
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
-  void handle(event.data).catch((error: unknown) => {
+  const request = event.data;
+  operationQueue = operationQueue.then(() => handle(request)).catch((error: unknown) => {
     postMessage({
       type: "ERROR",
-      requestId: event.data.requestId,
+      requestId: request.requestId,
       message: error instanceof Error ? error.message : "Erreur vocale locale inconnue"
     });
   });
@@ -78,11 +81,11 @@ async function handle(request: WorkerRequest): Promise<void> {
     }
     case "SYNTHESIZE": {
       assertEmbeddedVoice(request.voiceId);
-      const wav = await piper.predict({
-        text: request.text.slice(0, 2_000),
-        voiceId: request.voiceId
-      });
+      const cleanText = request.text.trim().slice(0, 2_000);
+      if (!cleanText) throw new Error("Aucun texte n’a été fourni au moteur vocal.");
+      const wav = await piper.predict({ text: cleanText, voiceId: request.voiceId });
       const buffer = await wav.arrayBuffer();
+      if (buffer.byteLength < 1_024) throw new Error("Le moteur vocal a généré un audio incomplet.");
       postMessage({
         type: "AUDIO",
         requestId: request.requestId,
