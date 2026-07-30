@@ -127,11 +127,16 @@ jobs:
           grep -q 'HEALTH_CACHE_MS' apps/extension/src/managed-hermes-runtime.ts
           grep -q 'verifyConnection' apps/extension/src/managed-hermes-runtime.ts
           grep -q 'repairManagedHermes' apps/extension/src/managed-hermes-runtime.ts
-          grep -q 'neptune.agent.mission.v3' apps/extension/src/offscreen-agent-runtime.ts
           grep -q 'restoreDurableMission' apps/extension/src/offscreen-agent-runtime.ts
+          grep -q 'AGENT_STATE_WRITE_MISSION' apps/extension/src/offscreen-agent-runtime.ts
+          grep -q 'AGENT_STATE_WRITE_MISSION' apps/extension/src/service-worker.ts
           grep -q 'AGENT_START' apps/extension/src/service-worker.ts
           grep -q 'HERMES_HEALTH_ALARM' apps/extension/src/service-worker.ts
           grep -q 'GET_MANAGED_HERMES' apps/extension/src/neptune-app.ts
+          if grep -q 'chrome.storage' apps/extension/src/offscreen-agent-runtime.ts; then
+            echo 'The offscreen mission runtime must access storage only through the service-worker broker.'
+            exit 1
+          fi
           if grep -q 'planAgentStep' apps/extension/src/neptune-app.ts; then
             echo 'The side panel still contains the mission execution loop.'
             exit 1
@@ -213,6 +218,7 @@ jobs:
         run: |
           [scriptblock]::Create((Get-Content 'apps/managed-runtime/assets/install.ps1' -Raw)) | Out-Null
           [scriptblock]::Create((Get-Content 'apps/managed-runtime/assets/start-runtime.ps1' -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content 'apps/managed-runtime/assets/installer-ui.ps1' -Raw)) | Out-Null
           [scriptblock]::Create((Get-Content 'apps/managed-runtime/scripts/build-windows.ps1' -Raw)) | Out-Null
 
       - name: Build Neptune Windows installer
@@ -229,7 +235,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: neptune-windows-installer-v2.0.0
-          path: apps/managed-runtime/dist/NeptuneSetup.exe
+          path: |
+            apps/managed-runtime/dist/NeptuneSetup.exe
+            apps/managed-runtime/dist/NeptuneSetup.sha256
           if-no-files-found: error
           retention-days: 90
 
@@ -257,9 +265,9 @@ jobs:
           NEPTUNE 2.0 — CANDIDAT DE PRODUCTION
 
           Installation client cible :
-          1. Installer l’extension Neptune depuis sa fiche Chrome Web Store.
-          2. Lancer NeptuneSetup.exe.
-          3. Ouvrir Neptune depuis l’icône Chrome.
+          1. Lancer NeptuneSetup.exe.
+          2. Confirmer « Ajouter à Chrome » lorsque la fiche officielle Neptune s’ouvre.
+          3. Ouvrir Neptune depuis l’icône Extensions.
 
           Aucune clé API, URL locale, terminal ou configuration technique n’est demandé au client.
 
@@ -270,6 +278,7 @@ jobs:
         shell: bash
         run: |
           test -s release/NeptuneSetup.exe
+          test -s release/NeptuneSetup.sha256
           test -s release/neptune-extension-production-v2.0.0.zip
           cd release
           zip -r ../Neptune-2.0-Production-RC-Windows.zip .
