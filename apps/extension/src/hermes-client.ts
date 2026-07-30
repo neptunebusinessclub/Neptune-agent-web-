@@ -149,6 +149,7 @@ export async function callHermesAgent(
   ];
 
   try {
+    if (combined.aborted) throw new DOMException("La requête Hermes a été interrompue.", "AbortError");
     dispatchHermesStatus("connecting", "Connexion au cerveau Hermes");
     const response = await fetch(`${endpoint}/v1/chat/completions`, {
       method: "POST",
@@ -165,6 +166,7 @@ export async function callHermesAgent(
       const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
       throw hermesHttpError(response.status, payload);
     }
+    if (combined.aborted) throw new DOMException("La requête Hermes a été interrompue.", "AbortError");
 
     const returnedSessionId = response.headers.get("X-Hermes-Session-Id");
     if (identity && returnedSessionId && returnedSessionId !== identity.sessionId) {
@@ -196,6 +198,10 @@ export async function resetHermesSession(): Promise<void> {
 async function readHermesEventStream(response: Response, signal: AbortSignal): Promise<string> {
   if (!response.body) throw new Error("Hermes n’a pas fourni de flux de réponse.");
   const reader = response.body.getReader();
+  if (signal.aborted) {
+    await reader.cancel("Neptune stopped Hermes").catch(() => undefined);
+    throw new DOMException("La requête Hermes a été interrompue.", "AbortError");
+  }
   const decoder = new TextDecoder();
   let buffer = "";
   let answer = "";
