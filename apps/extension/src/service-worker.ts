@@ -10,6 +10,9 @@ export {};
 
 type WorkspaceMode = "current-tab" | "new-tab" | "new-window";
 type WakeConfig = { wakeWord: "Neptune" | "OK Neptune"; wakeWordEnabled: boolean; language: string; oneShot: boolean };
+type AgentStateResource = "mission" | "preferences" | "messages" | "audit";
+type AgentMessageInput = { role: "user" | "assistant"; text: string; tone?: "normal" | "warning" | "permission" };
+type AgentAuditInput = { type: string; detail: string };
 type ExtensionRequest =
   | { type: "GET_STATUS" }
   | { type: "GET_ACTIVE_TAB" }
@@ -30,7 +33,11 @@ type ExtensionRequest =
   | { type: "AGENT_STOP"; reason?: string }
   | { type: "AGENT_APPROVE" }
   | { type: "AGENT_RESUME" }
-  | { type: "AGENT_STATUS" };
+  | { type: "AGENT_STATUS" }
+  | { type: "AGENT_STATE_READ"; resource: AgentStateResource }
+  | { type: "AGENT_STATE_WRITE_MISSION"; mission: unknown }
+  | { type: "AGENT_STATE_APPEND_MESSAGE"; message: AgentMessageInput }
+  | { type: "AGENT_STATE_APPEND_AUDIT"; entry: AgentAuditInput };
 
 type BrowserError = {
   code: "HUMAN_VERIFICATION" | "AUTHENTICATION_REQUIRED" | "PAGE_PERMISSION" | "TARGET_NOT_FOUND" | "BROWSER_ACTION_FAILED" | "MISSION_STOPPED" | "NAVIGATION_TIMEOUT";
@@ -39,7 +46,9 @@ type BrowserError = {
   retryable: boolean;
 };
 type WakeStatus = { status: string; error?: string; updatedAt: string };
-type AgentMissionSummary = { status?: string; updatedAt?: string };
+type AgentMissionSummary = { id?: string; status?: string; updatedAt?: string };
+type StoredMessage = AgentMessageInput & { id: string; tone: "normal" | "warning" | "permission"; createdAt: string };
+type StoredAudit = AgentAuditInput & { id: string; occurredAt: string };
 
 const WORK_TAB_STORAGE_KEY = "neptuneWorkTabId";
 const WORK_MODE_STORAGE_KEY = "neptuneWorkMode";
@@ -50,11 +59,15 @@ const ASSISTANT_WINDOW_KEY = "neptune.voiceAssistantWindowId.v1";
 const MISSION_CONTROL_KEY = "neptune.missionControl.v2";
 const MISSION_STORAGE_KEY = "neptune.agent.mission.v3";
 const PREFERENCES_KEY = "neptune.preferences.v2";
+const MESSAGES_STORAGE_KEY = "neptune.messages.v2";
+const AUDIT_STORAGE_KEY = "neptune.audit.v2";
 const HERMES_STATUS_KEY = "neptune.hermes.status.v2";
 const OFFSCREEN_PATH = "offscreen.html";
 const SIDEPANEL_PATH = "sidepanel.html";
 const HERMES_HEALTH_ALARM = "neptune-hermes-health";
 const AGENT_RECOVERY_ALARM = "neptune-agent-recovery";
+const MAX_MESSAGES = 80;
+const MAX_AUDIT = 240;
 
 type MissionControl = { generation: number; status: "running" | "stopped"; updatedAt: string };
 let creatingOffscreen: Promise<void> | null = null;
@@ -145,6 +158,14 @@ async function handleRequest(request: ExtensionRequest): Promise<unknown> {
       return commandDurableAgent("AGENT_RESUME", true);
     case "AGENT_STATUS":
       return readDurableMission();
+    case "AGENT_STATE_READ":
+      return readAgentState(request.resource);
+    case "AGENT_STATE_WRITE_MISSION":
+      return persistAgentMission(request.mission);
+    case "AGENT_STATE_APPEND_MESSAGE":
+      return appendAgentMessage(request.message);
+    case "AGENT_STATE_APPEND_AUDIT":
+      return appendAgentAudit(request.entry);
   }
 }
 
@@ -211,7 +232,61 @@ async function restoreAgentRuntime(): Promise<void> {
 async function readDurableMission(): Promise<AgentMissionSummary | null> {
   const stored = await chrome.storage.local.get(MISSION_STORAGE_KEY);
   const value = stored[MISSION_STORAGE_KEY];
-  return value && typeof value === "object" ? value as AgentMissionSummary : null;
+  return isMissionRecord(value) ? value : null;
+}
+
+async function readAgentState(resource: AgentStateResource): Promise<unknown> {
+  const key = resource === "mission"
+    ? MISSION_STORAGE_KEY
+    : resource === "preferences"
+      ? PREFERENCES_KEY
+      : resource === "messages"
+        ? MESSAGES_STORAGE_KEY
+        : AUDIT_STORAGE_KEY;
+  const stored = await chrome.storage.local.get(key);
+  return stored[key] ?? (resource === "messages" || resource === "audit" ? [] : null);
+}
+
+async function persistAgentMission(value: unknown): Promise<AgentMissionSummary> {
+  if (!isMissionRecord(value)) throw new Error("BROWSER_ACTION_FAILED: état de mission invalide");
+  const mission = { ...value, updatedAt: new Date().toISOString() };
+  await chrome.storage.local.set({ [MISSION_STORAGE_KEY]: mission });
+  await chrome.runtime.sendMessage({ target: "neptune-sidepanel", type: "AGENT_STATE_CHANGED", mission }).catch(() => undefined);
+  return mission;
+}
+
+async function appendAgentMessage(input: AgentMessageInput): Promise<StoredMessage[]> {
+  const text = typeof input?.text === "string" ? input.text.trim().slice(0, 12_000) : "";
+  if (!text || !["user", "assistant"].includes(input?.role)) throw new Error("BROWSER_ACTION_FAILED: message de mission invalide");
+  const stored = await chrome.storage.local.get(MESSAGES_STORAGE_KEY);
+  const current = Array.isArray(stored[MESSAGES_STORAGE_KEY]) ? stored[MESSAGES_STORAGE_KEY] as StoredMessage[] : [];
+  const message: StoredMessage = {
+    id: crypto.randomUUID(),
+    role: input.role,
+    text,
+    tone: input.tone === "warning" || input.tone === "permission" ? input.tone : "normal",
+    createdAt: new Date().toISOString()
+  };
+  const messages = [...current, message].slice(-MAX_MESSAGES);
+  await chrome.storage.local.set({ [MESSAGES_STORAGE_KEY]: messages });
+  return messages;
+}
+
+async function appendAgentAudit(input: AgentAuditInput): Promise<StoredAudit[]> {
+  const type = typeof input?.type === "string" ? input.type.trim().slice(0, 120) : "";
+  const detail = typeof input?.detail === "string" ? input.detail.trim().slice(0, 1_000) : "";
+  if (!type) throw new Error("BROWSER_ACTION_FAILED: événement de mission invalide");
+  const stored = await chrome.storage.local.get(AUDIT_STORAGE_KEY);
+  const current = Array.isArray(stored[AUDIT_STORAGE_KEY]) ? stored[AUDIT_STORAGE_KEY] as StoredAudit[] : [];
+  const audit = [...current, { id: crypto.randomUUID(), type, detail, occurredAt: new Date().toISOString() }].slice(-MAX_AUDIT);
+  await chrome.storage.local.set({ [AUDIT_STORAGE_KEY]: audit });
+  return audit;
+}
+
+function isMissionRecord(value: unknown): value is AgentMissionSummary & Record<string, unknown> {
+  if (!value || typeof value !== "object") return false;
+  const source = value as Record<string, unknown>;
+  return typeof source.id === "string" && typeof source.status === "string" && typeof source.updatedAt === "string";
 }
 
 function unwrapOffscreenResult(value: unknown): unknown {
