@@ -16,6 +16,7 @@ let mounting = false;
 let renderScheduled = false;
 let hermesSelected = false;
 let connectionState: Record<string, unknown> = {};
+let liveStatusTimer: number | undefined;
 
 const observer = new MutationObserver(() => scheduleRefresh());
 observer.observe(document.documentElement, { childList: true, subtree: true });
@@ -23,7 +24,10 @@ void initializeHermesUi();
 
 window.addEventListener("neptune-hermes-status", (event) => {
   const detail = (event as CustomEvent<{ status?: string; detail?: string }>).detail;
-  updateStatus(detail?.status ?? "working", detail?.detail ?? "Hermes travaille…");
+  const status = detail?.status ?? "working";
+  const text = detail?.detail ?? "Hermes travaille…";
+  updateStatus(status, text);
+  renderLiveHermesStatus(status, text);
 });
 
 document.addEventListener("change", (event) => {
@@ -104,6 +108,36 @@ function refreshVisibleLabels(): void {
   const status = settingStatus?.querySelector<HTMLElement>("span");
   if (name) name.textContent = "Hermes Agent — mémoire et compétences";
   if (status) status.textContent = connectionState.status === "connected" ? "Connecté" : "À connecter";
+}
+
+function renderLiveHermesStatus(status: string, detail: string): void {
+  document.documentElement.dataset.hermesStatus = status;
+  window.clearTimeout(liveStatusTimer);
+  const stage = document.querySelector<HTMLElement>(".conversation-stage");
+  if (!stage) return;
+  let element = document.getElementById("neptune-hermes-live-status");
+  if (!element) {
+    element = document.createElement("div");
+    element.id = "neptune-hermes-live-status";
+    element.className = "hermes-live-status";
+    element.setAttribute("role", "status");
+    element.setAttribute("aria-live", "polite");
+    stage.prepend(element);
+  }
+  element.className = `hermes-live-status ${status}`;
+  element.innerHTML = `<span class="hermes-live-pulse" aria-hidden="true"></span><strong>Hermes</strong><span>${escapeHtml(detail)}</span>`;
+
+  if (["completed", "stopped"].includes(status)) {
+    liveStatusTimer = window.setTimeout(() => {
+      element?.remove();
+      delete document.documentElement.dataset.hermesStatus;
+    }, 1_600);
+  } else if (status === "error") {
+    liveStatusTimer = window.setTimeout(() => {
+      element?.remove();
+      delete document.documentElement.dataset.hermesStatus;
+    }, 6_000);
+  }
 }
 
 async function configureHermesFields(dispatch = true): Promise<void> {
