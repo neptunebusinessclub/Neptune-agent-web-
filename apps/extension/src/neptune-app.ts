@@ -348,7 +348,7 @@ async function nextOnboardingStep(): Promise<void> {
     return;
   }
 
-  if (step < ONBOARDARDING_LAST_STEP_SAFE()) {
+  if (step < ONBOARDING_LAST_STEP) {
     preferences.onboardingStep += 1;
     await savePreferences();
     render();
@@ -359,7 +359,7 @@ async function nextOnboardingStep(): Promise<void> {
 
   if (engineState !== "ready") {
     await prepareEngine(false);
-    if (engineState !== "ready") return;
+    if ((engineState as ReadyState) !== "ready") return;
   }
   preferences.onboardingComplete = true;
   preferences.wakeWordEnabled = !activationSkipped;
@@ -369,10 +369,6 @@ async function nextOnboardingStep(): Promise<void> {
   render();
   speak(`Configuration terminée. ${preferences.preferredName}, je suis prêt.`);
   if (preferences.wakeWordEnabled) await enableBackgroundWake();
-}
-
-function ONBOARDARDING_LAST_STEP_SAFE(): number {
-  return ONBOARDING_LAST_STEP;
 }
 
 async function selectVoiceGender(gender: VoiceGender, preview: boolean): Promise<void> {
