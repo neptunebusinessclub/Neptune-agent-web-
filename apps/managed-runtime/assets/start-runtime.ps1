@@ -3,6 +3,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+try {
+  $consoleEncoding = New-Object System.Text.UTF8Encoding($false)
+  [Console]::OutputEncoding = $consoleEncoding
+  $OutputEncoding = $consoleEncoding
+} catch { }
+
 $Root = Join-Path $env:LOCALAPPDATA 'Neptune\Hermes'
 $HermesHome = Join-Path $Root 'hermes-home'
 $HermesInstall = Join-Path $Root 'hermes-agent'
@@ -87,7 +93,8 @@ function Wait-Until {
 function Start-LlamaBackend {
   param(
     [ValidateSet('vulkan', 'cpu')][string]$Backend,
-    [string]$Executable
+    [string]$Executable,
+    [int]$ContextLength
   )
   $threads = [math]::Max(2, [math]::Min([Environment]::ProcessorCount - 1, 12))
   $gpuLayers = if ($Backend -eq 'vulkan') { '999' } else { '0' }
@@ -98,13 +105,19 @@ function Start-LlamaBackend {
     '--alias', 'Qwen3-4B-Q4_K_M',
     '--host', '127.0.0.1',
     '--port', '8080',
-    '--ctx-size', '65536',
+    '--ctx-size', [string]$ContextLength,
     '--threads', [string]$threads,
     '--parallel', '1',
-    '--jinja',
-    '--rope-scaling', 'yarn',
-    '--rope-scale', '2',
-    '--yarn-orig-ctx', '32768',
+    '--jinja'
+  )
+  if ($ContextLength -gt 32768) {
+    $arguments += @(
+      '--rope-scaling', 'yarn',
+      '--rope-scale', '2',
+      '--yarn-orig-ctx', '32768'
+    )
+  }
+  $arguments += @(
     '--flash-attn', 'on',
     '--cache-type-k', 'q8_0',
     '--cache-type-v', 'q8_0',
@@ -124,6 +137,13 @@ function Start-LlamaBackend {
 if ($Repair) { Stop-TrackedProcesses }
 $connection = Read-Connection
 $apiKey = [string]$connection.apiKey
+$contextLength = 16384
+if ($connection.PSObject.Properties.Name -contains 'contextLength') {
+  $configuredContext = [int]$connection.contextLength
+  if ($configuredContext -in @(16384, 32768, 65536)) {
+    $contextLength = $configuredContext
+  }
+}
 
 if ((Test-Endpoint 'http://127.0.0.1:8080/v1/models') -and (Test-Endpoint "$($connection.endpoint)/health" $apiKey)) {
   exit 0
@@ -138,11 +158,11 @@ if (-not (Test-Endpoint 'http://127.0.0.1:8080/v1/models')) {
   $vulkanExe = Find-LlamaExecutable -Backend 'vulkan'
   $cpuExe = Find-LlamaExecutable -Backend 'cpu'
   if ($vulkanExe) {
-    $llamaProcess = Start-LlamaBackend -Backend 'vulkan' -Executable $vulkanExe
+    $llamaProcess = Start-LlamaBackend -Backend 'vulkan' -Executable $vulkanExe -ContextLength $contextLength
     if ($llamaProcess) { $selectedBackend = 'vulkan' }
   }
   if (-not $llamaProcess -and $cpuExe) {
-    $llamaProcess = Start-LlamaBackend -Backend 'cpu' -Executable $cpuExe
+    $llamaProcess = Start-LlamaBackend -Backend 'cpu' -Executable $cpuExe -ContextLength $contextLength
     if ($llamaProcess) { $selectedBackend = 'cpu' }
   }
   if (-not $llamaProcess) {
@@ -170,7 +190,7 @@ $state = [ordered]@{
   hermesPid = if ($hermesProcess) { $hermesProcess.Id } else { $null }
   startedAt = (Get-Date).ToUniversalTime().ToString('o')
   model = 'Qwen3-4B-Q4_K_M'
-  contextLength = 65536
+  contextLength = $contextLength
   backend = $selectedBackend
 }
 $state | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
