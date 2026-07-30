@@ -106,13 +106,14 @@ jobs:
         if: steps.build.outcome == 'failure'
         run: exit 1
 
-      - name: Validate Neptune 1.6.1 package
+      - name: Validate Neptune 1.7 package
         shell: bash
         run: |
-          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.6.1'||m.version_name!=='1.6.1 Premium Voice'||!m.permissions?.includes('offscreen')||m.permissions?.includes('nativeMessaging')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('apps/extension/dist/manifest.json','utf8'));if(m.manifest_version!==3||m.version!=='1.7.0'||m.version_name!=='1.7 Hermes Brain'||!m.permissions?.includes('offscreen')||m.permissions?.includes('nativeMessaging')||!m.host_permissions?.includes('http://127.0.0.1/*')||!m.content_security_policy?.extension_pages?.includes('wasm-unsafe-eval'))process.exit(1);"
           test -f apps/extension/dist/sidepanel.html
           test -f apps/extension/dist/sidepanel.js
           test -f apps/extension/dist/premium-hologram.css
+          test -f apps/extension/dist/hermes-settings.css
           test -f apps/extension/dist/offscreen.html
           test -f apps/extension/dist/offscreen-wake.js
           test -f apps/extension/dist/webllm-worker.js
@@ -132,6 +133,11 @@ jobs:
           test -s apps/extension/dist/voices/runtime/piper_phonemize.wasm
           test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.mjs
           test -s apps/extension/dist/voices/runtime/ort-wasm-simd-threaded.jsep.wasm
+          grep -q "callHermesAgent" apps/extension/src/intelligence.ts
+          grep -q "X-Hermes-Session-Id" apps/extension/src/hermes-client.ts
+          grep -q "X-Hermes-Session-Key" apps/extension/src/hermes-client.ts
+          grep -q "API_SERVER_CORS_ORIGINS" apps/extension/src/hermes-settings.ts
+          grep -q "Hermes Agent — mémoire et compétences" apps/extension/src/hermes-settings.ts
           grep -q "planAgentStep" apps/extension/src/neptune-app.ts
           grep -q "MISSION_CONTROL_KEY" apps/extension/src/service-worker.ts
           grep -q "createWritable" apps/extension/src/piper-voice-worker.ts
@@ -181,13 +187,13 @@ jobs:
         shell: bash
         run: |
           cd apps/extension/dist
-          zip -r ../../../neptune-extension-premium-v1.6.1.zip .
+          zip -r ../../../neptune-extension-hermes-v1.7.0.zip .
 
       - name: Publish production extension
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-extension-premium-v1.6.1
-          path: neptune-extension-premium-v1.6.1.zip
+          name: neptune-extension-hermes-v1.7.0
+          path: neptune-extension-hermes-v1.7.0.zip
           if-no-files-found: error
           retention-days: 90
 
