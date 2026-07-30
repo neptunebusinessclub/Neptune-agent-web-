@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "Neptune — Assistant navigateur",
   "short_name": "Neptune",
-  "version": "1.7.0",
-  "version_name": "1.7 Hermes Brain",
-  "description": "Assistant navigateur local, vocal et adaptatif avec cerveau local par défaut et connexion optionnelle à Hermes Agent.",
+  "version": "1.8.0",
+  "version_name": "1.8 Hermes Integrated",
+  "description": "Assistant navigateur vocal et adaptatif avec Hermes Agent intégré, mémoire locale et configuration automatique.",
   "minimum_chrome_version": "138",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8aMcGOx/IT2nMVJlMpbtEDmWi3NwTu0Aw5qgxxBOffzwi+H7Fx27J6QrHmS9G0rOYphUWvwD0NV8FkcGUZ7RnTfw1lqS2SmwiQT/9kMVKgUoN6vgVq9M2/2/sYV85SOD6UIHrQzijBdLktYSlg+T6qLXuogW1tMHWvRRPhy/GuKDZ++7i0+5cwdfHSejol30pvQphQ6lLrE9bqU0S9+/niuckt2JN63tO35cehzxcp7hCgqG4iLB2xOp218aD+Pz/N3ZFfynBJPgSmKQtgafDFNKABbj4ayo8koi1nVLhIyzSb4WKCVei/PZQB6isrpL6RbkHVgFwYL7/CgCcYA6ZwIDAQAB",
   "icons": {
@@ -20,7 +20,8 @@
     "sidePanel",
     "storage",
     "tabs",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "http://127.0.0.1/*",
