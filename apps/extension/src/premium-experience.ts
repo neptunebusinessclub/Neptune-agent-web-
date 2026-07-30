@@ -40,8 +40,9 @@ document.addEventListener("click", (event) => {
 
 const observer = new MutationObserver(() => {
   const permissionNotice = Array.from(document.querySelectorAll<HTMLElement>(".notice"))
-    .find((element) => /permission dismissed|microphone|reconnaissance vocale.*refus|accès au microphone/i.test(element.textContent ?? ""));
+    .find((element) => element.dataset.permissionNormalized !== "true" && /permission dismissed|microphone|reconnaissance vocale.*refus|accès au microphone/i.test(element.textContent ?? ""));
   if (permissionNotice) {
+    permissionNotice.dataset.permissionNormalized = "true";
     permissionNotice.textContent = "Le microphone n’a pas été autorisé. Neptune reste utilisable au clavier : vous pourrez réactiver la voix plus tard.";
     permissionNotice.classList.add("warning");
     ensureMicrophoneRecovery("Chrome n’a pas accordé l’accès au microphone.");
