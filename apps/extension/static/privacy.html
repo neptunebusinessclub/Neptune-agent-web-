@@ -10,8 +10,8 @@
 </head>
 <body>
   <h1>Politique de confidentialité de Neptune</h1>
-  <p>Version du 30 juillet 2026 — Neptune 1.6.1 Premium Voice.</p>
-  <p class="note">Neptune minimise les données transmises. Les préférences, l’historique, le journal des missions, les voix embarquées, les modèles locaux sélectionnés et les clés fournisseur restent dans le profil Chrome de l’utilisateur, sauf lorsqu’une requête doit être envoyée au fournisseur cloud choisi.</p>
+  <p>Version du 30 juillet 2026 — Neptune 1.7 Hermes Brain.</p>
+  <p class="note">Neptune minimise les données transmises. Le cerveau local reste le choix par défaut. Hermes Agent, Mammouth AI et les autres fournisseurs externes ne sont utilisés qu’après une configuration explicite dans les paramètres avancés.</p>
 
   <h2>Données conservées localement</h2>
   <ul>
@@ -19,6 +19,7 @@
     <li>historique conversationnel et journal des missions ;</li>
     <li>mission, checkpoint et état d’arrêt courant dans le stockage de session Chrome ;</li>
     <li>configuration du fournisseur d’intelligence ;</li>
+    <li>identifiants techniques de continuité de session Hermes, sans contenu de conversation ;</li>
     <li>sélection et cache du modèle d’intelligence local ;</li>
     <li>copies privées des fichiers vocaux embarqués dans OPFS ;</li>
     <li>clés API chiffrées localement avec AES-GCM.</li>
@@ -30,25 +31,32 @@
   <p>Le texte est transformé en audio dans un Web Worker de l’extension. Neptune n’envoie ni le texte à prononcer ni l’audio généré à un service distant de synthèse vocale. La voix Windows n’est pas utilisée dans le parcours normal de Neptune.</p>
 
   <h2>Intelligence locale</h2>
-  <p>Neptune choisit automatiquement un profil local compatible avec les ressources déclarées par le navigateur. Lors de la première préparation, les poids du modèle WebLLM sont téléchargés depuis leur emplacement de distribution puis conservés dans le cache local IndexedDB de Chrome. Ces fichiers contiennent le modèle et son runtime, pas les conversations de l’utilisateur.</p>
+  <p>Neptune choisit automatiquement un profil local compatible avec les ressources déclarées par le navigateur. Lors de la première préparation, les poids du modèle WebLLM sont téléchargés depuis leur emplacement de distribution puis conservés dans le cache local IndexedDB de Chrome.</p>
   <p>Lorsque l’intelligence intégrée de Chrome ou un modèle WebLLM local est utilisé, les instructions, le contexte utile de la page et les réponses sont traités sur l’ordinateur.</p>
 
-  <h2>Activation vocale</h2>
-  <p>La permission microphone est demandée uniquement après une action explicite de l’utilisateur. Après autorisation, Neptune peut écouter les expressions « Neptune » et « OK Neptune » lorsque Chrome reste ouvert. Un document d’extension hors écran peut maintenir cette écoute.</p>
-  <p>Si la permission est refusée ou fermée, l’accueil reste utilisable au clavier et propose de réessayer ultérieurement. Le refus du microphone ne bloque pas l’utilisation générale de Neptune.</p>
+  <h2>Hermes Agent optionnel</h2>
+  <p>Lorsque l’utilisateur connecte Hermes Agent, les messages nécessaires à la réponse sont transmis directement au serveur Hermes configuré. Ce serveur peut être local à l’ordinateur ou auto-hébergé. Neptune n’envoie pas ces messages à un autre serveur Hermes.</p>
+  <p>Hermes peut utiliser sa mémoire, ses compétences et les outils activés dans sa propre configuration. Ces outils s’exécutent sur la machine ou le serveur qui héberge Hermes, et non dans l’onglet Chrome contrôlé par Neptune.</p>
+  <p>Les observations et le contenu structuré de l’onglet de travail ne sont pas transmis aux outils Hermes. La planification des actions dans le navigateur local reste assurée par le cerveau local de Neptune ; si ce moteur n’est pas disponible, la mission navigateur est mise en pause au lieu d’envoyer la page à Hermes.</p>
+  <p>Les réponses Hermes sont reçues en flux. L’arrêt de Neptune ferme ce flux afin que le serveur Hermes puisse interrompre l’agent et ses appels d’outils.</p>
+  <p>La clé <code>API_SERVER_KEY</code> est stockée chiffrée dans le profil Chrome uniquement après une connexion réussie. Les identifiants de continuité de session permettent à Hermes de retrouver le contexte associé à Neptune ; ils peuvent être renouvelés depuis les paramètres avancés.</p>
 
-  <h2>Données transmises</h2>
+  <h2>Activation vocale</h2>
+  <p>La permission microphone est demandée uniquement après une action explicite de l’utilisateur. Après autorisation, Neptune peut écouter les expressions « Neptune » et « OK Neptune » lorsque Chrome reste ouvert.</p>
+  <p>Si la permission est refusée ou fermée, l’accueil reste utilisable au clavier et propose de réessayer ultérieurement.</p>
+
+  <h2>Autres fournisseurs externes</h2>
   <p>Lorsqu’un fournisseur cloud est choisi dans les paramètres avancés, les messages nécessaires à la réponse ou à la planification sont envoyés directement à ce fournisseur selon ses propres conditions. Neptune n’envoie jamais une clé API à un autre fournisseur que celui configuré.</p>
-  <p>Pour accomplir une mission navigateur, Neptune lit uniquement la page définie comme espace de travail et ne fournit au moteur d’intelligence que le contexte nécessaire à l’objectif demandé.</p>
 
   <h2>Permissions navigateur</h2>
-  <p>L’accès aux sites est demandé avant la première mission nécessitant de lire ou manipuler une page. Selon la décision de l’utilisateur, Neptune peut travailler dans la page actuelle, un nouvel onglet ou une nouvelle fenêtre. L’extension ne contourne pas les protections de sécurité des plateformes.</p>
+  <p>L’accès aux sites est demandé avant la première mission nécessitant de lire ou manipuler une page. Selon la décision de l’utilisateur, Neptune peut travailler dans la page actuelle, un nouvel onglet ou une nouvelle fenêtre.</p>
+  <p>Les permissions locales <code>http://127.0.0.1/*</code> et <code>http://localhost/*</code> servent uniquement à joindre un éventuel serveur Hermes local ou un autre moteur local explicitement configuré.</p>
 
   <h2>Actions sensibles</h2>
   <p>Neptune refuse d’automatiser les paiements, achats, suppressions de compte, mots de passe, codes secrets, signatures, virements et contournements de CAPTCHA. Les communications externes exigent une autorisation explicite limitée à l’action concernée.</p>
 
   <h2>Suppression des données</h2>
-  <p>L’utilisateur peut effacer la conversation et le journal depuis les réglages. Le cache du modèle local et les copies OPFS des voix peuvent être supprimés en effaçant les données de stockage de l’extension dans Chrome. La désinstallation supprime les données associées au profil Chrome, sous réserve des mécanismes de sauvegarde propres au navigateur.</p>
+  <p>L’utilisateur peut effacer la conversation et le journal depuis les réglages. La commande « Nouvelle session » renouvelle l’identité de conversation Neptune–Hermes sans supprimer les mémoires déjà enregistrées par Hermes. Les données conservées par Hermes doivent être gérées depuis l’installation Hermes concernée.</p>
 
   <h2>Contact</h2>
   <p>Responsable du produit : Neptune Business Club. Les coordonnées de contact et la version publique de cette politique doivent être renseignées sur la fiche Chrome Web Store avant publication.</p>
