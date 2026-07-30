@@ -4,44 +4,23 @@ export type NeptuneLocalVoice = {
   id: string;
   name: string;
   style: string;
-  quality: "low" | "medium";
+  quality: "medium";
   recommended: boolean;
 };
 
 export const NEPTUNE_LOCAL_VOICES: NeptuneLocalVoice[] = [
   {
     id: "fr_FR-siwis-medium",
-    name: "Néréide",
-    style: "Claire, posée et naturelle",
+    name: "Féminine",
+    style: "Naturelle, claire et chaleureuse",
     quality: "medium",
     recommended: true
   },
   {
     id: "fr_FR-tom-medium",
-    name: "Triton",
-    style: "Directe, stable et professionnelle",
+    name: "Masculine",
+    style: "Posée, profonde et professionnelle",
     quality: "medium",
-    recommended: false
-  },
-  {
-    id: "fr_FR-upmc-medium",
-    name: "Atlas",
-    style: "Neutre, précise et structurée",
-    quality: "medium",
-    recommended: false
-  },
-  {
-    id: "fr_FR-mls-medium",
-    name: "Nova",
-    style: "Dynamique et conversationnelle",
-    quality: "medium",
-    recommended: false
-  },
-  {
-    id: "fr_FR-gilles-low",
-    name: "Mistral",
-    style: "Légère et rapide sur les postes modestes",
-    quality: "low",
     recommended: false
   }
 ];
@@ -62,6 +41,7 @@ type PendingRequest = {
 const PREFERENCES_KEY = "neptune.preferences.v2";
 const READY_KEY = "neptune.local-voices.ready.v1";
 const pending = new Map<string, PendingRequest>();
+const voicePreparations = new Map<string, Promise<void>>();
 let worker: Worker | null = null;
 let currentAudio: HTMLAudioElement | null = null;
 let currentAudioUrl = "";
@@ -109,19 +89,42 @@ export async function getAvailableLocalVoiceIds(): Promise<string[]> {
   return [];
 }
 
-export async function prepareLocalVoice(
+export function prepareLocalVoice(
   voiceId: string,
   onProgress?: (progress: number, detail: string) => void
 ): Promise<void> {
-  const available: string[] = await getAvailableLocalVoiceIds().catch((): string[] => []);
-  if (available.length > 0 && !available.includes(voiceId)) {
-    throw new Error("Cette voix française n’est pas disponible dans le catalogue local installé.");
-  }
-  await requestWorker("DOWNLOAD", { voiceId }, onProgress);
+  const existing = voicePreparations.get(voiceId);
+  if (existing) return existing;
+  const preparation = prepareLocalVoiceOnce(voiceId, onProgress).finally(() => {
+    voicePreparations.delete(voiceId);
+  });
+  voicePreparations.set(voiceId, preparation);
+  return preparation;
+}
+
+async function prepareLocalVoiceOnce(
+  voiceId: string,
+  onProgress?: (progress: number, detail: string) => void
+): Promise<void> {
+  const available = await getAvailableLocalVoiceIds();
+  if (!available.includes(voiceId)) throw new Error("Cette voix française n’est pas incluse dans Neptune.");
+
   const ready = new Set(await getReadyLocalVoices());
-  ready.add(voiceId);
-  await chrome.storage.local.set({ [READY_KEY]: [...ready] });
-  window.dispatchEvent(new CustomEvent("neptune-voice-ready", { detail: { voiceId } }));
+  if (ready.has(voiceId)) {
+    onProgress?.(1, "Voix intégrée prête");
+    return;
+  }
+
+  try {
+    await requestWorker("DOWNLOAD", { voiceId }, onProgress);
+    ready.add(voiceId);
+    await chrome.storage.local.set({ [READY_KEY]: [...ready] });
+    window.dispatchEvent(new CustomEvent("neptune-voice-ready", { detail: { voiceId } }));
+  } catch (error) {
+    ready.delete(voiceId);
+    await chrome.storage.local.set({ [READY_KEY]: [...ready] });
+    throw error;
+  }
 }
 
 export async function previewLocalVoice(
@@ -131,7 +134,7 @@ export async function previewLocalVoice(
   await prepareLocalVoice(voiceId, onProgress);
   const voice = NEPTUNE_LOCAL_VOICES.find((item) => item.id === voiceId);
   await playLocalText(
-    `Bonjour. Je suis Neptune. Voici la voix ${voice?.name ?? "locale"}. Je suis prêt à vous accompagner.`,
+    `Bonjour. Je suis Neptune. Vous avez choisi la voix ${voice?.name.toLocaleLowerCase("fr-FR") ?? "locale"}.`,
     voiceId,
     onProgress
   );
@@ -148,22 +151,20 @@ export async function playLocalText(
     buffer: ArrayBuffer;
     mimeType: string;
   };
+  if (response.buffer.byteLength < 1_024) throw new Error("La voix a produit un fichier audio invalide.");
   if (generation !== playbackGeneration) return;
+
   const blob = new Blob([response.buffer], { type: response.mimeType || "audio/wav" });
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
   currentAudio = audio;
   currentAudioUrl = url;
   attachAudioMeter(audio);
-  await new Promise<void>((resolve, reject) => {
-    audio.onended = () => resolve();
-    audio.onerror = () => reject(new Error("La lecture de la voix locale a échoué."));
-    void audio.play().catch(reject);
-  }).finally(() => {
-    if (currentAudio === audio) currentAudio = null;
-    if (currentAudioUrl === url) currentAudioUrl = "";
-    URL.revokeObjectURL(url);
-  });
+  try {
+    await playAudioWithDeadline(audio, 30_000);
+  } finally {
+    cleanupAudio(audio, url);
+  }
 }
 
 export function stopLocalPlayback(resetWorker = true): void {
@@ -199,21 +200,21 @@ function installSpeechProxy(): void {
     })).then(async (response) => {
       if (generation !== playbackGeneration) return;
       const audioPayload = response as { buffer: ArrayBuffer; mimeType: string };
+      if (audioPayload.buffer.byteLength < 1_024) throw new Error("Audio local invalide");
       const blob = new Blob([audioPayload.buffer], { type: audioPayload.mimeType || "audio/wav" });
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       currentAudio = audio;
       currentAudioUrl = url;
       attachAudioMeter(audio);
-      audio.onended = () => {
+      try {
+        await playAudioWithDeadline(audio, 60_000);
         if (generation === playbackGeneration) utterance.dispatchEvent(new Event("end"));
-        cleanupAudio(audio, url);
-      };
-      audio.onerror = () => {
+      } catch {
         if (generation === playbackGeneration) utterance.dispatchEvent(new Event("error"));
+      } finally {
         cleanupAudio(audio, url);
-      };
-      await audio.play();
+      }
     }).catch(() => {
       if (generation === playbackGeneration) utterance.dispatchEvent(new Event("error"));
     });
@@ -244,7 +245,7 @@ function getWorker(): Worker {
     const request = pending.get(message.requestId);
     if (!request) return;
     if (message.type === "PROGRESS") {
-      request.onProgress?.(Math.max(0, Math.min(1, message.progress)), message.file || "Téléchargement de la voix");
+      request.onProgress?.(Math.max(0, Math.min(1, message.progress)), message.file || "Préparation de la voix");
       window.dispatchEvent(new CustomEvent("neptune-voice-progress", { detail: message }));
       return;
     }
@@ -284,11 +285,46 @@ function requestWorker(
 function resetVoiceWorker(reason: unknown): void {
   worker?.terminate();
   worker = null;
+  voicePreparations.clear();
   for (const request of pending.values()) {
     window.clearTimeout(request.timeoutId);
     request.reject(reason);
   }
   pending.clear();
+}
+
+async function playAudioWithDeadline(audio: HTMLAudioElement, maxDurationMs: number): Promise<void> {
+  await promiseWithTimeout(audio.play(), 5_000, "La sortie audio ne répond pas.");
+  const estimated = Number.isFinite(audio.duration) && audio.duration > 0
+    ? Math.min(maxDurationMs, Math.max(5_000, audio.duration * 1_000 + 3_000))
+    : maxDurationMs;
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      audio.pause();
+      resolve();
+    }, estimated);
+    audio.onended = () => {
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    audio.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error("La lecture de la voix locale a échoué."));
+    };
+  });
+}
+
+function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then((value) => {
+      window.clearTimeout(timeout);
+      resolve(value);
+    }, (error) => {
+      window.clearTimeout(timeout);
+      reject(error);
+    });
+  });
 }
 
 function attachAudioMeter(audio: HTMLAudioElement): void {
@@ -320,6 +356,9 @@ function attachAudioMeter(audio: HTMLAudioElement): void {
 }
 
 function cleanupAudio(audio: HTMLAudioElement, url: string): void {
+  audio.pause();
+  audio.onended = null;
+  audio.onerror = null;
   if (currentAudio === audio) currentAudio = null;
   if (currentAudioUrl === url) currentAudioUrl = "";
   URL.revokeObjectURL(url);
