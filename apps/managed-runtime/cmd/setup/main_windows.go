@@ -40,6 +40,15 @@ func main() {
 }
 
 func run() error {
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("impossible de localiser NeptuneSetup.exe: %w", err)
+	}
+	executable, err = filepath.Abs(executable)
+	if err != nil {
+		return fmt.Errorf("impossible de normaliser le chemin de NeptuneSetup.exe: %w", err)
+	}
+
 	temporary, err := os.MkdirTemp("", "neptune-production-setup-")
 	if err != nil {
 		return err
@@ -77,6 +86,7 @@ func run() error {
 		"-HostSource", host,
 		"-StartScriptSource", starter,
 		"-StoreUrl", chromeStoreURL,
+		"-SetupPath", executable,
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NO_WINDOW | syscall.CREATE_NEW_PROCESS_GROUP,
