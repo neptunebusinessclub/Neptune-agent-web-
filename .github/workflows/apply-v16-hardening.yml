@@ -1,15 +1,15 @@
 name: Apply Neptune v1.6 hardening
 
 on:
-  push:
-    branches: [feat/neptune-v16-runtime-hardening]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: ${{ !contains(github.event.head_commit.message, '[v16-applied]') }}
+    if: ${{ github.head_ref == 'feat/neptune-v16-runtime-hardening' && !contains(github.event.pull_request.title, '[v16-applied]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +21,12 @@ jobs:
           node-version: 22
       - name: Apply source hardening
         run: node scripts/apply-v16-hardening.mjs
+      - name: Keep the workflow graph stable
+        run: git checkout -- .github/workflows/ci.yml
       - name: Commit hardened sources
         run: |
           git config user.name "Neptune CI"
           git config user.email "actions@users.noreply.github.com"
-          git add apps/extension/src apps/extension/esbuild.mjs apps/extension/static/sidepanel.css .github/workflows/ci.yml
+          git add apps/extension/src apps/extension/esbuild.mjs apps/extension/static/sidepanel.css
           git commit -m "fix: harden Neptune runtime and onboarding [v16-applied]"
           git push origin HEAD:feat/neptune-v16-runtime-hardening
