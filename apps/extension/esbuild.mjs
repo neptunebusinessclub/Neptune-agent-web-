@@ -1,9 +1,10 @@
 import { build, context } from "esbuild";
 import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const watch = process.argv.includes("--watch");
-const root = new URL(".", import.meta.url).pathname;
+const root = path.dirname(fileURLToPath(import.meta.url));
 const outdir = path.join(root, "dist");
 
 await rm(outdir, { recursive: true, force: true });
