@@ -11,12 +11,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"unsafe"
 )
 
 //go:embed payload/*
 var payload embed.FS
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+const chromeStoreURL = "https://chromewebstore.google.com/detail/neptune/mhjkecpebpekcdbnhfmdiemlkfaafidh"
 
 func preparePayload(name string, content []byte) []byte {
 	if filepath.Ext(name) != ".ps1" || bytes.HasPrefix(content, utf8BOM) {
@@ -31,18 +34,13 @@ func preparePayload(name string, content []byte) []byte {
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "\nNeptune n’a pas pu terminer l’installation : %v\n", err)
-		fmt.Fprintln(os.Stderr, "Appuyez sur Entrée pour fermer.")
-		_, _ = fmt.Scanln()
+		showMessage("Neptune", fmt.Sprintf("Neptune n’a pas pu terminer l’installation.\n\n%s\n\nRelancez simplement l’installateur : il reprendra les éléments déjà téléchargés.", err), 0x10)
 		os.Exit(1)
 	}
 }
 
 func run() error {
-	fmt.Println("Neptune — installation du cerveau Hermes intégré")
-	fmt.Println("Cette opération installe automatiquement Hermes Agent et un modèle local. Aucun compte API ne sera demandé.")
-
-	temporary, err := os.MkdirTemp("", "neptune-hermes-setup-")
+	temporary, err := os.MkdirTemp("", "neptune-production-setup-")
 	if err != nil {
 		return err
 	}
@@ -52,6 +50,7 @@ func run() error {
 		"payload/NeptuneHermesHost.exe": "NeptuneHermesHost.exe",
 		"payload/install.ps1":          "install.ps1",
 		"payload/start-runtime.ps1":    "start-runtime.ps1",
+		"payload/installer-ui.ps1":     "installer-ui.ps1",
 	}
 	for source, name := range files {
 		content, readErr := payload.ReadFile(source)
@@ -67,21 +66,37 @@ func run() error {
 		}
 	}
 
+	ui := filepath.Join(temporary, "installer-ui.ps1")
 	script := filepath.Join(temporary, "install.ps1")
 	host := filepath.Join(temporary, "NeptuneHermesHost.exe")
 	starter := filepath.Join(temporary, "start-runtime.ps1")
 	cmd := exec.Command("powershell.exe",
-		"-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-		"-File", script,
+		"-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-WindowStyle", "Hidden",
+		"-File", ui,
+		"-InstallScript", script,
 		"-HostSource", host,
 		"-StartScriptSource", starter,
+		"-StoreUrl", chromeStoreURL,
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP}
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NO_WINDOW | syscall.CREATE_NEW_PROCESS_GROUP,
+		HideWindow:    true,
+	}
 	if err := cmd.Run(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func showMessage(title, message string, flags uintptr) {
+	user32 := syscall.NewLazyDLL("user32.dll")
+	messageBox := user32.NewProc("MessageBoxW")
+	titleUTF16, _ := syscall.UTF16PtrFromString(title)
+	messageUTF16, _ := syscall.UTF16PtrFromString(message)
+	_, _, _ = messageBox.Call(
+		0,
+		uintptr(unsafe.Pointer(messageUTF16)),
+		uintptr(unsafe.Pointer(titleUTF16)),
+		flags,
+	)
 }
