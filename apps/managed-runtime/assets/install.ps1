@@ -60,7 +60,7 @@ function Ensure-Hermes {
   )
   if ($hermesCandidates | Where-Object { Test-Path $_ }) { return }
 
-  Write-Step 'Installation du moteur Hermes Agent officiel…'
+  Write-Step 'Installation du moteur Hermes Agent officiel...'
   $installerUrl = "https://raw.githubusercontent.com/NousResearch/hermes-agent/$HermesTag/scripts/install.ps1"
   $installerText = [string](Invoke-RestMethod -Uri $installerUrl)
   $installerText = $installerText.TrimStart([char]0xFEFF)
@@ -73,25 +73,38 @@ function Ensure-Hermes {
   }
 }
 
-function Ensure-Llama {
-  if (Get-ChildItem -Path $LlamaRoot -Filter 'llama-server.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1) { return }
+function Install-LlamaAsset {
+  param(
+    [object]$Asset,
+    [ValidateSet('vulkan', 'cpu')][string]$Backend
+  )
+  if (-not $Asset) { throw "Le binaire llama.cpp $Backend manque dans $LlamaTag." }
+  $digest = [string]$Asset.digest
+  $sha = if ($digest -match '^sha256:(.+)$') { $Matches[1] } else { '' }
+  if (-not $sha) { throw "GitHub n'a pas fourni l'empreinte du binaire llama.cpp $Backend." }
+  $destination = Join-Path $LlamaRoot $Backend
+  New-Item -ItemType Directory -Force -Path $destination | Out-Null
+  $archive = Join-Path $Root $Asset.name
+  Download-WithHash -Url $Asset.browser_download_url -Destination $archive -ExpectedSha256 $sha
+  Expand-Archive -Path $archive -DestinationPath $destination -Force
+  Remove-Item $archive -Force
+  if (-not (Get-ChildItem -Path $destination -Filter 'llama-server.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+    throw "llama-server.exe manque après extraction du backend $Backend."
+  }
+}
 
-  Write-Step 'Installation du moteur local llama.cpp…'
+function Ensure-Llama {
+  $vulkanReady = Get-ChildItem -Path (Join-Path $LlamaRoot 'vulkan') -Filter 'llama-server.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+  $cpuReady = Get-ChildItem -Path (Join-Path $LlamaRoot 'cpu') -Filter 'llama-server.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($vulkanReady -and $cpuReady) { return }
+
+  Write-Step 'Installation des moteurs locaux accéléré et universel...'
   New-Item -ItemType Directory -Force -Path $LlamaRoot | Out-Null
   $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'Neptune-Installer' } -Uri "https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/$LlamaTag"
-  $asset = $release.assets | Where-Object { $_.name -match 'bin-win-vulkan-x64\.zip$' } | Select-Object -First 1
-  if (-not $asset) { $asset = $release.assets | Where-Object { $_.name -match 'bin-win-cpu-x64\.zip$' } | Select-Object -First 1 }
-  if (-not $asset) { throw "Aucun binaire llama.cpp Windows compatible dans $LlamaTag." }
-  $digest = [string]$asset.digest
-  $sha = if ($digest -match '^sha256:(.+)$') { $Matches[1] } else { '' }
-  if (-not $sha) { throw "GitHub n'a pas fourni l'empreinte du binaire llama.cpp." }
-  $archive = Join-Path $Root $asset.name
-  Download-WithHash -Url $asset.browser_download_url -Destination $archive -ExpectedSha256 $sha
-  Expand-Archive -Path $archive -DestinationPath $LlamaRoot -Force
-  Remove-Item $archive -Force
-  if (-not (Get-ChildItem -Path $LlamaRoot -Filter 'llama-server.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1)) {
-    throw 'llama-server.exe manque après extraction.'
-  }
+  $vulkanAsset = $release.assets | Where-Object { $_.name -match 'bin-win-vulkan-x64\.zip$' } | Select-Object -First 1
+  $cpuAsset = $release.assets | Where-Object { $_.name -match 'bin-win-cpu-x64\.zip$' } | Select-Object -First 1
+  if (-not $vulkanReady) { Install-LlamaAsset -Asset $vulkanAsset -Backend 'vulkan' }
+  if (-not $cpuReady) { Install-LlamaAsset -Asset $cpuAsset -Backend 'cpu' }
 }
 
 function Ensure-Model {
@@ -101,7 +114,7 @@ function Ensure-Model {
     Remove-Item $ModelPath -Force
   }
 
-  Write-Step 'Téléchargement du cerveau local Qwen3 4B — environ 2,5 Go…'
+  Write-Step 'Téléchargement du cerveau local Qwen3 4B - environ 2,5 Go...'
   New-Item -ItemType Directory -Force -Path $ModelRoot | Out-Null
   $tree = Invoke-RestMethod -Headers @{ 'User-Agent' = 'Neptune-Installer' } -Uri 'https://huggingface.co/api/models/Qwen/Qwen3-4B-GGUF/tree/main?recursive=false&expand=true'
   $file = $tree | Where-Object { $_.path -eq 'Qwen3-4B-Q4_K_M.gguf' } | Select-Object -First 1
@@ -112,7 +125,7 @@ function Ensure-Model {
 }
 
 function Write-Configuration {
-  Write-Step 'Configuration automatique de Hermes et de sa mémoire…'
+  Write-Step 'Configuration automatique de Hermes et de sa mémoire...'
   New-Item -ItemType Directory -Force -Path $HermesHome | Out-Null
   $apiKey = if (Test-Path $ConnectionPath) {
     try { [string](Get-Content $ConnectionPath -Raw | ConvertFrom-Json).apiKey } catch { '' }
@@ -134,6 +147,7 @@ API_SERVER_HOST=127.0.0.1
 API_SERVER_PORT=8642
 API_SERVER_KEY=$apiKey
 API_SERVER_CORS_ORIGINS=chrome-extension://$ExtensionId
+OPENAI_API_KEY=no-key-required
 "@ | Set-Content -Path (Join-Path $HermesHome '.env') -Encoding UTF8
 
   [ordered]@{
@@ -147,7 +161,7 @@ API_SERVER_CORS_ORIGINS=chrome-extension://$ExtensionId
 }
 
 function Register-NativeHost {
-  Write-Step 'Enregistrement sécurisé du moteur auprès de Chrome…'
+  Write-Step 'Enregistrement sécurisé du moteur auprès de Chrome...'
   Copy-Item $HostSource $HostPath -Force
   Copy-Item $StartScriptSource $StartScriptPath -Force
   [ordered]@{
@@ -188,7 +202,7 @@ Ensure-Model
 $apiKey = Write-Configuration
 Register-NativeHost
 
-Write-Step 'Démarrage et validation de Neptune Hermes…'
+Write-Step 'Démarrage et validation de Neptune Hermes...'
 & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $StartScriptPath -Repair
 if (-not (Test-Endpoint 'http://127.0.0.1:8642/health' $apiKey)) {
   throw 'Hermes a été installé mais sa validation finale a échoué. Consultez les journaux dans %LOCALAPPDATA%\Neptune\Hermes\logs.'
