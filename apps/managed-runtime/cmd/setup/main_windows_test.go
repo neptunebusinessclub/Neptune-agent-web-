@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -34,5 +35,29 @@ func TestPreparePayloadLeavesBinaryUntouched(t *testing.T) {
 
 	if !bytes.Equal(prepared, original) {
 		t.Fatal("binary payload must remain unchanged")
+	}
+}
+
+func TestBundledInstallerSeparatesBootstrapCommitFromHermesTag(t *testing.T) {
+	installer, err := payload.ReadFile("payload/install.ps1")
+	if err != nil {
+		t.Fatalf("read bundled install.ps1: %v", err)
+	}
+	text := string(installer)
+
+	if !strings.Contains(text, "$HermesTag = 'v2026.7.7.2'") {
+		t.Fatal("Hermes runtime release tag must remain pinned")
+	}
+	if !strings.Contains(text, "$HermesInstallerCommit = 'c9de69c6d5ed602059f5e9c9950c150e07b89212'") {
+		t.Fatal("Hermes installer bootstrap must be pinned to the audited checkout-fix commit")
+	}
+	if strings.Contains(text, "hermes-agent/$HermesTag/scripts/install.ps1") {
+		t.Fatal("the broken installer bundled in the Hermes release tag must not be used as bootstrap")
+	}
+	if !strings.Contains(text, "hermes-agent/$HermesInstallerCommit/scripts/install.ps1") {
+		t.Fatal("installer bootstrap URL must use the dedicated audited commit")
+	}
+	if !strings.Contains(text, "Repair-InterruptedHermesInstall") {
+		t.Fatal("interrupted ZIP fallback checkouts must be repaired automatically")
 	}
 }
