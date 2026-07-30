@@ -72,7 +72,7 @@ describe("Hermes capability detection", () => {
 });
 
 describe("Hermes conversation bridge", () => {
-  it("sends stable Hermes session headers and returns the final answer", async () => {
+  it("sends stable Hermes session headers and returns a JSON-compatible answer", async () => {
     let requestHeaders: Headers | undefined;
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       requestHeaders = new Headers(init?.headers);
@@ -94,11 +94,78 @@ describe("Hermes conversation bridge", () => {
     expect(requestHeaders?.get("X-Hermes-Session-Key")).toMatch(/^neptune-user-/);
     expect(storage.get("neptune.hermes.identity.v1")).toMatchObject({ sessionId: "hermes-session-confirmed" });
   });
+
+  it("combines Hermes SSE deltas and accepts tool progress events", async () => {
+    const progress = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent: progress });
+    vi.stubGlobal("CustomEvent", class {
+      type: string;
+      detail: unknown;
+      constructor(type: string, options?: { detail?: unknown }) {
+        this.type = type;
+        this.detail = options?.detail;
+      }
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => sseResponse([
+      `event: hermes.tool.progress\ndata: ${JSON.stringify({ tool_name: "web_search", status: "running", preview: "Recherche Neptune" })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Hermes " }, finish_reason: null }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "répond." }, finish_reason: null }] })}\n\n`,
+      "data: [DONE]\n\n"
+    ])));
+
+    const answer = await callHermesAgent(
+      { endpoint: "http://localhost:8642", apiKey: "a-secure-hermes-key", model: "hermes-agent" },
+      "Johan",
+      [{ role: "user", content: "Recherche une information." }],
+      "Tu es Neptune."
+    );
+
+    expect(answer).toBe("Hermes répond.");
+    expect(progress).toHaveBeenCalled();
+  });
+
+  it("turns an aborted Hermes stream into an AbortError", async () => {
+    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) { streamController = controller; },
+      cancel() { streamController = undefined; }
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" }
+    })));
+    const controller = new AbortController();
+    const request = callHermesAgent(
+      { endpoint: "http://localhost:8642", apiKey: "a-secure-hermes-key", model: "hermes-agent" },
+      "Johan",
+      [{ role: "user", content: "Lance une tâche longue." }],
+      "Tu es Neptune.",
+      controller.signal
+    );
+    controller.abort();
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+  });
 });
 
 function jsonResponse(body: unknown, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json", ...(headers ?? {}) }
+  });
+}
+
+function sseResponse(frames: string[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) controller.enqueue(encoder.encode(frame));
+      controller.close();
+    }
+  }), {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "X-Hermes-Session-Id": "stream-session"
+    }
   });
 }
