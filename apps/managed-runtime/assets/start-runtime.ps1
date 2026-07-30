@@ -95,6 +95,7 @@ function Start-LlamaBackend {
   $stderr = Join-Path $Logs "llama-$Backend.err.log"
   $arguments = @(
     '--model', $ModelPath,
+    '--alias', 'Qwen3-4B-Q4_K_M',
     '--host', '127.0.0.1',
     '--port', '8080',
     '--ctx-size', '65536',
