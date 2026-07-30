@@ -15,8 +15,8 @@ if (process.platform === "linux" && !process.env.DISPLAY && process.env.NEPTUNE_
 }
 
 const extensionPath = path.resolve("apps/extension/dist");
-const userDataDir = await mkdtemp(path.join(os.tmpdir(), "neptune-cdp-"));
-const hermes = await startFakeHermesServer();
+const userDataDir = await mkdtemp(path.join(os.tmpdir(), "neptune-production-cdp-"));
+const engine = await startFakeNeptuneEngine();
 const chromeBinary = findChrome();
 
 const chrome = spawn(chromeBinary, [
@@ -41,11 +41,11 @@ chrome.stderr.on("data", (chunk) => { chromeOutput += chunk.toString(); });
 
 try {
   const port = await waitForDevToolsPort(userDataDir, chrome);
-  const extensionTarget = await waitForExtensionWorker(port);
-  const extensionId = new URL(extensionTarget.url).host;
+  const initialWorker = await waitForExtensionWorker(port);
+  const extensionId = new URL(initialWorker.url).host;
   const startupUrl = `chrome-extension://${extensionId}/sidepanel.html`;
-  const pageTarget = await waitForPageTarget(port);
-  const cdp = createCdpClient(pageTarget.webSocketDebuggerUrl);
+  const initialPage = await waitForPageTarget(port);
+  const cdp = createCdpClient(initialPage.webSocketDebuggerUrl);
   const exceptions = [];
   const consoleErrors = [];
   cdp.on("Runtime.exceptionThrown", (params) => {
@@ -79,100 +79,129 @@ try {
 
   await evaluate(cdp, `document.querySelector("button[data-action='onboarding-next']").click()`);
   await waitFor(cdp, `document.body.innerText.includes("Dites « Neptune » ou « OK Neptune »")`, 10_000);
-  await evaluate(cdp, `document.querySelector("button[data-action='test-activation']").click()`);
-  await delay(1_500);
-  const permissionText = await evaluate(cdp, `document.body.innerText`);
-  assert(!/Permission dismissed/i.test(permissionText), "The microphone flow exposed the raw Permission dismissed error");
+  await evaluate(cdp, `document.querySelector("button[data-action='skip-activation']").click()`);
+  await waitFor(cdp, `document.body.innerText.includes("Activation vocale désactivée")`, 10_000);
+  assert(await evaluate(cdp, `document.querySelector("button[data-action='onboarding-next']").disabled === false`), "Keyboard-only onboarding must remain possible");
 
-  await completeOnboardingForIntegrationTest(cdp, hermes.endpoint);
-  await waitFor(cdp, `Boolean(document.querySelector("button[data-action='open-settings']"))`, 20_000);
+  await completeProductSetup(cdp, engine.endpoint);
+  await waitFor(cdp, `Boolean(document.querySelector("#draft"))`, 20_000);
+
   await evaluate(cdp, `document.querySelector("button[data-action='open-settings']").click()`);
-  await waitFor(cdp, `Boolean(document.querySelector("button[data-action='toggle-advanced']"))`, 10_000);
-  await evaluate(cdp, `document.querySelector("button[data-action='toggle-advanced']").click()`);
-  await waitFor(cdp, `document.querySelector("#advanced-provider")?.value === "hermes" && document.body.innerText.includes("Hermes intégré")`, 10_000);
-  const manualHermesFields = await evaluate(cdp, `Boolean(document.querySelector("#provider-endpoint")) || Boolean(document.querySelector("#provider-secret")) || Boolean(document.querySelector("#neptune-hermes-card"))`);
-  assert(manualHermesFields === false, "Neptune still exposes manual Hermes URL, API key or CORS controls");
-
+  await waitFor(cdp, `document.body.innerText.includes("Configurer Neptune")`, 10_000);
+  const settingsText = await evaluate(cdp, `document.body.innerText`);
+  assert(!/API_SERVER|CORS|localhost|127\.0\.0\.1|clé API|Hermes/i.test(settingsText), "Technical engine configuration leaked into the no-tech interface");
+  assert(!documentQueryWasExposed(await evaluate(cdp, `document.documentElement.outerHTML`)), "Manual endpoint or secret controls are still exposed");
   await evaluate(cdp, `document.querySelector("button[data-action='close-settings']").click()`);
-  await waitFor(cdp, `Boolean(document.querySelector("#draft"))`, 10_000);
+
   await evaluate(cdp, `(() => {
     const draft = document.querySelector("#draft");
-    draft.value = "Réponds avec Hermes en une phrase.";
+    draft.value = "Présente-toi en une phrase.";
     draft.dispatchEvent(new Event("input", { bubbles: true }));
     document.querySelector("button[data-action='send']").click();
     return true;
   })()`);
-  await waitFor(cdp, `document.body.innerText.includes("Hermes a répondu depuis le serveur de recette.")`, 20_000);
-  const chatRequest = hermes.requests.find((request) => request.path === "/v1/chat/completions");
-  assert(chatRequest, "Neptune never sent the conversation to Hermes");
-  assert(chatRequest.authorization === "Bearer neptune-hermes-test-key-123456", "Neptune did not use the automatically managed Hermes key");
-  assert(/^neptune-/.test(chatRequest.sessionId ?? ""), "Neptune did not send a stable Hermes session ID");
-  assert(/^neptune-user-/.test(chatRequest.sessionKey ?? ""), "Neptune did not send a stable Hermes session key");
+  await waitFor(cdp, `document.body.innerText.includes("Neptune a répondu depuis son moteur de recette.")`, 20_000);
+  const chatRequest = engine.requests.find((request) => request.path === "/v1/chat/completions" && !request.planner);
+  assert(chatRequest, "Neptune never sent the conversation to its managed engine");
+  assert(chatRequest.authorization === "Bearer neptune-engine-test-key-123456", "Neptune did not use the automatically managed local key");
+  assert(/^neptune-/.test(chatRequest.sessionId ?? ""), "Neptune did not send a stable session ID");
+  assert(/^neptune-user-/.test(chatRequest.sessionKey ?? ""), "Neptune did not send a stable session key");
 
-  const stopState = await evaluate(cdp, `(async () => {
-    await chrome.runtime.sendMessage({ type: "START_MISSION", workspaceMode: "new-tab" });
-    await chrome.runtime.sendMessage({ type: "STOP_MISSION" });
-    const status = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
-    return status?.result?.stopped === true && status?.result?.missionControl?.status === "stopped";
+  const missionStarted = await evaluate(cdp, `(async () => {
+    const response = await chrome.runtime.sendMessage({
+      type: "AGENT_START",
+      goal: "Attends quelques secondes puis confirme que la mission a continué en arrière-plan.",
+      workspaceMode: "new-tab"
+    });
+    return response?.ok === true && response?.result?.mission?.status === "running";
   })()`);
-  assert(stopState, "Mission stop state is not persisted in chrome.storage.session");
+  assert(missionStarted, "The durable mission did not start");
+  await waitForNode(() => engine.plannerRequests >= 1, 20_000, "the first planner cycle");
 
   const browserCdp = createCdpClient(await getBrowserWebSocketUrl(port));
   await browserCdp.connect();
-  try {
-    await browserCdp.send("Target.closeTarget", { targetId: extensionTarget.id });
-  } catch (error) {
-    if (!/No target with given id found/i.test(error instanceof Error ? error.message : String(error))) throw error;
-  }
-  await waitForTargetGone(port, extensionTarget.id, 10_000);
-  await browserCdp.close();
+  await closeTargetIgnoringMissing(browserCdp, initialPage.id);
+  await closeTargetIgnoringMissing(browserCdp, initialWorker.id);
+  await waitForTargetGone(port, initialPage.id, 10_000);
+  await waitForTargetGone(port, initialWorker.id, 10_000);
 
-  await waitFor(cdp, `(async () => {
-    try {
-      const status = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
-      return status?.result?.stopped === true && status?.result?.missionControl?.status === "stopped";
-    } catch {
-      return false;
-    }
-  })()`, 15_000);
+  await waitForNode(() => engine.plannerRequests >= 2, 30_000, "mission recovery after panel and worker shutdown");
+  await waitForExtensionWorker(port);
 
+  const created = await browserCdp.send("Target.createTarget", { url: startupUrl });
+  const reopenedTarget = await waitForTargetById(port, created.targetId, 15_000);
+  const reopened = createCdpClient(reopenedTarget.webSocketDebuggerUrl);
+  const reopenedExceptions = [];
+  reopened.on("Runtime.exceptionThrown", (params) => reopenedExceptions.push(params?.exceptionDetails?.text ?? "Unknown page exception"));
+  await reopened.connect();
+  await reopened.send("Runtime.enable");
+  await reopened.send("Page.enable");
+  await waitFor(reopened, `Boolean(document.querySelector("#draft"))`, 20_000);
+  await waitFor(reopened, `(async () => {
+    const stored = await chrome.storage.local.get("neptune.agent.mission.v3");
+    return stored["neptune.agent.mission.v3"]?.status === "completed";
+  })()`, 30_000);
+  await waitFor(reopened, `document.body.innerText.includes("Mission persistante terminée après fermeture du panneau")`, 20_000);
+
+  const durableState = await evaluate(reopened, `(async () => {
+    const stored = await chrome.storage.local.get(["neptune.agent.mission.v3", "neptune.messages.v2"]);
+    const mission = stored["neptune.agent.mission.v3"];
+    const messages = stored["neptune.messages.v2"] || [];
+    return {
+      status: mission?.status,
+      history: mission?.history?.length || 0,
+      hasCompletion: messages.some((message) => String(message?.text || "").includes("Mission persistante terminée après fermeture du panneau"))
+    };
+  })()`);
+  assert(durableState.status === "completed", `Durable mission ended in ${durableState.status}`);
+  assert(durableState.history >= 2, "Durable mission lost its checkpoint history");
+  assert(durableState.hasCompletion, "Durable mission completion was not restored in the reopened interface");
+  assert(reopenedExceptions.length === 0, `Reopened panel exceptions: ${reopenedExceptions.join(" | ")}`);
+
+  const cleanSettings = await evaluate(reopened, `document.body.innerText`);
+  assert(!/API_SERVER|CORS|localhost|127\.0\.0\.1|Hermes/i.test(cleanSettings), "Reopened interface exposed technical implementation details");
   assert(exceptions.length === 0, `Page exceptions: ${exceptions.join(" | ")}`);
-  assert(consoleErrors.filter((message) => /Hermes|ReferenceError|TypeError/i.test(message)).length === 0, `Hermes console errors: ${consoleErrors.join(" | ")}`);
-  await cdp.close();
-  console.log(`Neptune Chromium smoke test passed with premium voices, zero-config managed Hermes and durable stop state for extension ${extensionId}.`);
+  assert(consoleErrors.filter((message) => /ReferenceError|TypeError|Unhandled/i.test(message)).length === 0, `Console errors: ${consoleErrors.join(" | ")}`);
+
+  await reopened.close();
+  await browserCdp.close();
+  console.log(`Neptune 2 Chromium production test passed: premium voices, no-tech UI, managed engine health and durable mission recovery for ${extensionId}.`);
 } catch (error) {
-  console.error(chromeOutput.slice(-8_000));
+  console.error(chromeOutput.slice(-10_000));
   throw error;
 } finally {
   await stopProcess(chrome);
-  await closeServer(hermes.server);
+  await closeServer(engine.server);
   await removeDirectoryWithRetry(userDataDir);
 }
 
-async function completeOnboardingForIntegrationTest(cdp, endpoint) {
+async function completeProductSetup(cdp, endpoint) {
   await evaluate(cdp, `(async () => {
     const key = "neptune.preferences.v2";
     const stored = await chrome.storage.local.get(key);
     await chrome.storage.local.set({
       [key]: {
         ...(stored[key] ?? {}),
-        productVersion: 18,
+        productVersion: 20,
         onboardingComplete: true,
         onboardingStep: 3,
+        preferredName: "Johan",
         providerId: "hermes",
         endpoint: ${JSON.stringify(endpoint)},
         model: "Qwen3-4B-Q4_K_M",
         wakeWordEnabled: false,
-        autoResumeVoice: false
+        autoResumeVoice: false,
+        siteAccessGranted: true
       }
     });
     await chrome.storage.session.set({
-      "neptune.managedHermes.connection.v1": {
+      "neptune.managedHermes.connection.v2": {
         endpoint: ${JSON.stringify(endpoint)},
-        apiKey: "neptune-hermes-test-key-123456",
+        apiKey: "neptune-engine-test-key-123456",
         model: "Qwen3-4B-Q4_K_M",
-        runtimeVersion: "1.8.0",
-        managed: true
+        runtimeVersion: "2.0.0",
+        managed: true,
+        verifiedAt: Date.now()
       }
     });
     location.reload();
@@ -180,8 +209,9 @@ async function completeOnboardingForIntegrationTest(cdp, endpoint) {
   })()`);
 }
 
-async function startFakeHermesServer() {
+async function startFakeNeptuneEngine() {
   const requests = [];
+  let plannerRequests = 0;
   const server = createServer(async (request, response) => {
     const origin = request.headers.origin || "*";
     response.setHeader("Access-Control-Allow-Origin", origin);
@@ -198,19 +228,22 @@ async function startFakeHermesServer() {
     const pathName = new URL(request.url || "/", "http://127.0.0.1").pathname;
     const body = await readRequestBody(request);
     const authorization = request.headers.authorization;
+    const messages = Array.isArray(body?.messages) ? body.messages : [];
+    const planner = messages.some((message) => typeof message?.content === "string" && message.content.includes("Mode Neptune Browser Planner"));
     requests.push({
       path: pathName,
       method: request.method,
       authorization,
       sessionId: request.headers["x-hermes-session-id"],
       sessionKey: request.headers["x-hermes-session-key"],
+      planner,
       body
     });
-    if (authorization !== "Bearer neptune-hermes-test-key-123456") {
+    if (authorization !== "Bearer neptune-engine-test-key-123456") {
       sendJson(response, 401, { error: { message: "invalid key" } });
       return;
     }
-    if (pathName === "/health") return sendJson(response, 200, { status: "ok", platform: "hermes-agent", version: "test-1.0" });
+    if (pathName === "/health") return sendJson(response, 200, { status: "ok", platform: "hermes-agent", version: "production-test" });
     if (pathName === "/v1/capabilities") return sendJson(response, 200, {
       platform: "hermes-agent",
       model: "hermes-agent",
@@ -227,8 +260,31 @@ async function startFakeHermesServer() {
     if (pathName === "/v1/models") return sendJson(response, 200, { object: "list", data: [{ id: "hermes-agent", object: "model" }] });
     if (pathName === "/v1/skills") return sendJson(response, 200, { data: [{ name: "research" }, { name: "memory" }] });
     if (pathName === "/v1/chat/completions") {
-      response.setHeader("X-Hermes-Session-Id", request.headers["x-hermes-session-id"] || "hermes-test-session");
-      return sendJson(response, 200, { choices: [{ message: { role: "assistant", content: "Hermes a répondu depuis le serveur de recette." } }] });
+      response.setHeader("X-Hermes-Session-Id", request.headers["x-hermes-session-id"] || "neptune-test-session");
+      if (planner) {
+        plannerRequests += 1;
+        const content = plannerRequests === 1
+          ? JSON.stringify({
+              text: "Je maintiens la mission active en arrière-plan.",
+              done: false,
+              needsHuman: false,
+              actions: [{
+                type: "WAIT",
+                label: "Attendre pendant la fermeture du panneau",
+                risk: "read_only",
+                requiresApproval: false,
+                delayMs: 5_000
+              }]
+            })
+          : JSON.stringify({
+              text: "Mission persistante terminée après fermeture du panneau et redémarrage du service.",
+              done: true,
+              needsHuman: false,
+              actions: []
+            });
+        return sendJson(response, 200, { choices: [{ message: { role: "assistant", content } }] });
+      }
+      return sendJson(response, 200, { choices: [{ message: { role: "assistant", content: "Neptune a répondu depuis son moteur de recette." } }] });
     }
     return sendJson(response, 404, { error: { message: "not found" } });
   });
@@ -237,8 +293,17 @@ async function startFakeHermesServer() {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Fake Hermes server did not expose a TCP port");
-  return { server, endpoint: `http://127.0.0.1:${address.port}`, requests };
+  if (!address || typeof address === "string") throw new Error("Fake Neptune engine did not expose a TCP port");
+  return {
+    server,
+    endpoint: `http://127.0.0.1:${address.port}`,
+    requests,
+    get plannerRequests() { return plannerRequests; }
+  };
+}
+
+function documentQueryWasExposed(html) {
+  return /provider-endpoint|provider-secret|advanced-provider|neptune-hermes-card/i.test(String(html || ""));
 }
 
 function sendJson(response, status, payload) {
@@ -317,7 +382,18 @@ async function waitForTargetGone(port, targetId, timeoutMs) {
     if (!targets.some((target) => target.id === targetId)) return;
     await delay(100);
   }
-  throw new Error("The Neptune service worker did not stop when requested");
+  throw new Error(`Chrome target ${targetId} did not stop when requested`);
+}
+
+async function waitForTargetById(port, targetId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const targets = await listTargets(port).catch(() => []);
+    const target = targets.find((candidate) => candidate.id === targetId);
+    if (target?.webSocketDebuggerUrl) return target;
+    await delay(100);
+  }
+  throw new Error(`Chrome target ${targetId} did not become controllable`);
 }
 
 async function waitForPageTarget(port) {
@@ -328,6 +404,15 @@ async function waitForPageTarget(port) {
     await delay(100);
   }
   throw new Error("No controllable Chrome page target is available");
+}
+
+async function closeTargetIgnoringMissing(browserCdp, targetId) {
+  if (!targetId) return;
+  try {
+    await browserCdp.send("Target.closeTarget", { targetId });
+  } catch (error) {
+    if (!/No target with given id found|not found/i.test(error instanceof Error ? error.message : String(error))) throw error;
+  }
 }
 
 async function ensureOnboardingLoaded(cdp, url) {
@@ -423,6 +508,15 @@ async function waitFor(cdp, expression, timeoutMs) {
     await delay(100);
   }
   throw new Error(`Timed out waiting for: ${expression}`);
+}
+
+async function waitForNode(predicate, timeoutMs, label) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await delay(100);
+  }
+  throw new Error(`Timed out waiting for ${label}`);
 }
 
 async function stopProcess(processHandle) {
