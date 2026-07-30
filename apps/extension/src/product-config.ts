@@ -1,4 +1,4 @@
-export const PRODUCT_VERSION = 18;
+export const PRODUCT_VERSION = 17;
 export const BALANCED_LOCAL_MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
 export const LOCAL_VOICE_PREFIX = "neptune-piper:";
 
