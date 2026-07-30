@@ -52,7 +52,8 @@ New-ItemProperty -Path $extensionRegistry -Name 'update_url' -Value 'https://cli
 $uninstallRegistry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Neptune'
 New-Item -Path $uninstallRegistry -Force | Out-Null
 $estimatedBytes = (Get-ChildItem $productRoot -File -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-$estimatedKilobytes = [int][Math]::Ceiling(([double]($estimatedBytes ?? 0)) / 1KB)
+if ($null -eq $estimatedBytes) { $estimatedBytes = 0 }
+$estimatedKilobytes = [int][Math]::Ceiling(([double]$estimatedBytes) / 1KB)
 New-ItemProperty -Path $uninstallRegistry -Name 'DisplayName' -Value 'Neptune' -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $uninstallRegistry -Name 'DisplayVersion' -Value '2.0.0' -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $uninstallRegistry -Name 'Publisher' -Value 'Neptune Business Club' -PropertyType String -Force | Out-Null
