@@ -16,7 +16,16 @@ $LlamaRoot = Join-Path $Root 'llama'
 $ModelPath = Join-Path $Root 'models\Qwen3-4B-Q4_K_M.gguf'
 $Logs = Join-Path $Root 'logs'
 $StatePath = Join-Path $Root 'runtime-state.json'
+$ConnectionPath = Join-Path $Root 'connection.json'
+$ConfigPath = Join-Path $HermesHome 'config.yaml'
+$MinimumHermesContext = 65536
 New-Item -ItemType Directory -Force -Path $Logs | Out-Null
+
+function Write-Utf8NoBom {
+  param([string]$Path, [string]$Content)
+  $encoding = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
 
 function Test-Endpoint {
   param([string]$Url, [string]$Key = '')
@@ -29,22 +38,68 @@ function Test-Endpoint {
 }
 
 function Read-Connection {
-  $path = Join-Path $Root 'connection.json'
-  if (-not (Test-Path $path)) { throw 'connection.json absent' }
-  return Get-Content $path -Raw | ConvertFrom-Json
+  if (-not (Test-Path $ConnectionPath)) { throw 'connection.json absent' }
+  return Get-Content $ConnectionPath -Raw | ConvertFrom-Json
 }
 
 function Stop-TrackedProcesses {
-  if (-not (Test-Path $StatePath)) { return }
-  try {
-    $state = Get-Content $StatePath -Raw | ConvertFrom-Json
-    foreach ($pidValue in @($state.llamaPid, $state.hermesPid)) {
-      if ($pidValue -and (Get-Process -Id $pidValue -ErrorAction SilentlyContinue)) {
-        Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+  if (Test-Path $StatePath) {
+    try {
+      $state = Get-Content $StatePath -Raw | ConvertFrom-Json
+      foreach ($pidValue in @($state.llamaPid, $state.hermesPid)) {
+        if ($pidValue -and (Get-Process -Id $pidValue -ErrorAction SilentlyContinue)) {
+          Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+        }
       }
-    }
-  } catch { }
+    } catch { }
+  }
+  foreach ($port in @(8080, 8642)) {
+    try {
+      $listeners = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
+      foreach ($listener in $listeners) {
+        if ($listener.OwningProcess -and (Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue)) {
+          Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
+        }
+      }
+    } catch { }
+  }
   Remove-Item $StatePath -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 1
+}
+
+function Write-ManagedConfiguration {
+  param(
+    [object]$Connection,
+    [int]$ContextLength
+  )
+
+  if ($Connection.PSObject.Properties.Name -contains 'contextLength') {
+    $Connection.contextLength = $ContextLength
+  } else {
+    $Connection | Add-Member -NotePropertyName contextLength -NotePropertyValue $ContextLength
+  }
+  if ($Connection.PSObject.Properties.Name -contains 'runtimeVersion') {
+    $Connection.runtimeVersion = '1.8.2'
+  } else {
+    $Connection | Add-Member -NotePropertyName runtimeVersion -NotePropertyValue '1.8.2'
+  }
+  Write-Utf8NoBom -Path $ConnectionPath -Content ($Connection | ConvertTo-Json)
+
+  $config = @"
+model:
+  provider: custom
+  default: Qwen3-4B-Q4_K_M
+  base_url: http://127.0.0.1:8080/v1
+  api_key: no-key-required
+  context_length: $ContextLength
+
+compression:
+  enabled: true
+  threshold: 0.50
+  target_ratio: 0.20
+  protect_last_n: 20
+"@
+  Write-Utf8NoBom -Path $ConfigPath -Content $config
 }
 
 function Find-HermesExecutable {
@@ -90,6 +145,17 @@ function Wait-Until {
   throw $Failure
 }
 
+function Get-ReportedContextLength {
+  try {
+    $props = Invoke-RestMethod -Uri 'http://127.0.0.1:8080/props' -TimeoutSec 5
+    if ($props.default_generation_settings -and $props.default_generation_settings.n_ctx) {
+      return [int]$props.default_generation_settings.n_ctx
+    }
+    if ($props.n_ctx) { return [int]$props.n_ctx }
+  } catch { }
+  return 0
+}
+
 function Start-LlamaBackend {
   param(
     [ValidateSet('vulkan', 'cpu')][string]$Backend,
@@ -108,25 +174,20 @@ function Start-LlamaBackend {
     '--ctx-size', [string]$ContextLength,
     '--threads', [string]$threads,
     '--parallel', '1',
-    '--jinja'
-  )
-  if ($ContextLength -gt 32768) {
-    $arguments += @(
-      '--rope-scaling', 'yarn',
-      '--rope-scale', '2',
-      '--yarn-orig-ctx', '32768'
-    )
-  }
-  $arguments += @(
+    '--jinja',
+    '--rope-scaling', 'yarn',
+    '--rope-scale', '2',
+    '--yarn-orig-ctx', '32768',
     '--flash-attn', 'on',
-    '--cache-type-k', 'q8_0',
-    '--cache-type-v', 'q8_0',
+    '--cache-type-k', 'q4_0',
+    '--cache-type-v', 'q4_0',
     '--n-gpu-layers', $gpuLayers
   )
   $process = Start-Process -FilePath $Executable -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-  $timeout = if ($Backend -eq 'vulkan') { 75 } else { 180 }
+  $timeout = if ($Backend -eq 'vulkan') { 90 } else { 240 }
   if (Wait-Endpoint -Url 'http://127.0.0.1:8080/v1/models' -TimeoutSeconds $timeout) {
-    return $process
+    $reportedContext = Get-ReportedContextLength
+    if ($reportedContext -eq 0 -or $reportedContext -ge 64000) { return $process }
   }
   if ($process -and (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)) {
     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
@@ -134,19 +195,23 @@ function Start-LlamaBackend {
   return $null
 }
 
-if ($Repair) { Stop-TrackedProcesses }
 $connection = Read-Connection
 $apiKey = [string]$connection.apiKey
-$contextLength = 16384
+$configuredContext = 0
 if ($connection.PSObject.Properties.Name -contains 'contextLength') {
   $configuredContext = [int]$connection.contextLength
-  if ($configuredContext -in @(16384, 32768, 65536)) {
-    $contextLength = $configuredContext
-  }
 }
+$contextLength = [math]::Max($MinimumHermesContext, $configuredContext)
+$requiresMigration = $configuredContext -lt $MinimumHermesContext
+
+if ($Repair -or $requiresMigration) { Stop-TrackedProcesses }
+Write-ManagedConfiguration -Connection $connection -ContextLength $contextLength
+$connection = Read-Connection
 
 if ((Test-Endpoint 'http://127.0.0.1:8080/v1/models') -and (Test-Endpoint "$($connection.endpoint)/health" $apiKey)) {
-  exit 0
+  $reportedContext = Get-ReportedContextLength
+  if ($reportedContext -eq 0 -or $reportedContext -ge 64000) { exit 0 }
+  Stop-TrackedProcesses
 }
 
 if (-not (Test-Path $ModelPath)) { throw 'Le modèle local Neptune est absent. Relancez NeptuneSetup.exe.' }
@@ -166,7 +231,7 @@ if (-not (Test-Endpoint 'http://127.0.0.1:8080/v1/models')) {
     if ($llamaProcess) { $selectedBackend = 'cpu' }
   }
   if (-not $llamaProcess) {
-    throw "Le modèle local n'a démarré ni avec Vulkan ni avec le moteur CPU. Utilisez Réparer Hermes depuis Neptune."
+    throw "Le modèle local n'a pas démarré avec un contexte Hermes 64K, ni avec Vulkan ni avec le moteur CPU. Consultez les journaux dans $Logs."
   }
 }
 
@@ -191,6 +256,7 @@ $state = [ordered]@{
   startedAt = (Get-Date).ToUniversalTime().ToString('o')
   model = 'Qwen3-4B-Q4_K_M'
   contextLength = $contextLength
+  cacheType = 'q4_0'
   backend = $selectedBackend
 }
 $state | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
