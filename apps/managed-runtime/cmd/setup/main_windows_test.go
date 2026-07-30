@@ -110,7 +110,7 @@ Write-Output $key
 	}
 }
 
-func TestManagedHermesNeverConfiguresSub64KContext(t *testing.T) {
+func TestManagedHermesUsesAdaptiveContextWithoutPromptCache(t *testing.T) {
 	installer, err := payload.ReadFile("payload/install.ps1")
 	if err != nil {
 		t.Fatalf("read bundled install.ps1: %v", err)
@@ -124,31 +124,35 @@ func TestManagedHermesNeverConfiguresSub64KContext(t *testing.T) {
 
 	for _, required := range []string{
 		"$MinimumHermesContext = 65536",
-		"return $MinimumHermesContext",
 		"context_length: $ContextLength",
-		"runtimeVersion = '1.8.2'",
+		"runtimeVersion = '1.8.4'",
+		"Le profil local compatible a été sélectionné automatiquement",
 	} {
 		if !strings.Contains(installerText, required) {
-			t.Fatalf("installer is missing the Hermes 64K contract: %s", required)
+			t.Fatalf("installer is missing the adaptive runtime contract: %s", required)
 		}
-	}
-	if strings.Contains(installerText, "return 16384") || strings.Contains(installerText, "return 32768") {
-		t.Fatal("installer must never reduce the context below Hermes' 64K minimum")
 	}
 
 	for _, required := range []string{
-		"$MinimumHermesContext = 65536",
-		"[math]::Max($MinimumHermesContext, $configuredContext)",
-		"'--ctx-size', [string]$ContextLength",
-		"'--cache-type-k', 'q4_0'",
-		"'--cache-type-v', 'q4_0'",
-		"Get-ReportedContextLength",
+		"$FullContext = 65536",
+		"$CompactMinimumContext = 32000",
+		"$RuntimeVersion = '1.8.4'",
+		"'--cache-ram', '0'",
+		"'--ctx-checkpoints', '0'",
+		"'--fit', $Profile.Fit",
+		"Fit = 'off'",
+		"Fit = 'on'",
+		"Start-AdaptiveLlama",
+		"Set-HermesContextPolicy -Mode 'compact'",
+		"MINIMUM_CONTEXT_LENGTH = 32_000  # Neptune compact local mode",
+		"localMode = $localMode",
 	} {
 		if !strings.Contains(runtimeText, required) {
-			t.Fatalf("runtime is missing the Hermes 64K guard: %s", required)
+			t.Fatalf("runtime is missing adaptive context protection: %s", required)
 		}
 	}
-	if strings.Contains(runtimeText, "'--cache-type-k', 'q8_0'") || strings.Contains(runtimeText, "'--cache-type-v', 'q8_0'") {
-		t.Fatal("64K runtime must use the lower-memory q4_0 KV cache on 16 GB machines")
+
+	if strings.Contains(runtimeText, "--cache-ram', '8192") {
+		t.Fatal("the 8 GiB llama.cpp prompt cache must never be enabled on 16 GB hosts")
 	}
 }
