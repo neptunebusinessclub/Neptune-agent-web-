@@ -65,7 +65,7 @@ New-ItemProperty -Path $uninstallRegistry -Name 'InstallDate' -Value (Get-Date -
 New-ItemProperty -Path $uninstallRegistry -Name 'EstimatedSize' -Value $estimatedKilobytes -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $uninstallRegistry -Name 'NoModify' -Value 1 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $uninstallRegistry -Name 'NoRepair' -Value 1 -PropertyType DWord -Force | Out-Null
-Write-Host 'La demande d’ajout de Neptune à Chrome et la désinstallation Windows ont été préparées.'
+Write-Host "La demande d’ajout de Neptune à Chrome et la désinstallation Windows ont été préparées."
 '@
   $installerText = $installerText.Replace(
     "Write-Host 'Vous pouvez maintenant ouvrir Neptune dans Chrome.'",
