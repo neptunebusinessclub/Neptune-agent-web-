@@ -42,7 +42,8 @@ type ChatMessage = {
 const IDENTITY_KEY = "neptune.hermes.identity.v1";
 const DEFAULT_ENDPOINT = "http://127.0.0.1:8642";
 const DEFAULT_MODEL = "hermes-agent";
-const REQUEST_TIMEOUT_MS = 180_000;
+const REQUEST_TIMEOUT_MS = 120_000;
+const SLOW_RESPONSE_NOTICE_MS = 8_000;
 
 export function getHermesDefaultEndpoint(): string {
   return DEFAULT_ENDPOINT;
@@ -128,6 +129,9 @@ export async function callHermesAgent(
   const model = config.model?.trim() || DEFAULT_MODEL;
   const timeoutController = new AbortController();
   const timeout = globalThis.setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  const slowNotice = globalThis.setTimeout(() => {
+    dispatchHermesStatus("working", "Le modèle local prépare sa réponse…");
+  }, SLOW_RESPONSE_NOTICE_MS);
   const combined = mergeAbortSignals(signal, timeoutController.signal);
   const sessionId = identity?.sessionId ?? `neptune-planner-${crypto.randomUUID()}`;
   const headers: Record<string, string> = {
@@ -139,7 +143,7 @@ export async function callHermesAgent(
 
   const system = purpose === "browser-planning"
     ? `${systemInstruction}\n\nMode Neptune Browser Planner : n’exécute aucun outil Hermes, n’ouvre aucun navigateur serveur, n’écris dans aucune mémoire et réponds uniquement dans le format JSON demandé. Neptune exécutera lui-même les actions dans le navigateur local après validation.`
-    : `${systemInstruction}\n\nTu es le cerveau agentique intégré de Neptune. Tu peux utiliser les compétences, la mémoire et les outils locaux de Hermes. Les outils s’exécutent sur l’hôte Hermes, jamais silencieusement dans le navigateur Neptune. Ne prétends pas avoir manipulé l’onglet local de Neptune.`;
+    : `${systemInstruction}\n\nTu es le cerveau agentique intégré de Neptune. Réponds directement et clairement aux questions ordinaires. Utilise les compétences, la mémoire ou les outils locaux de Hermes uniquement lorsqu’ils sont réellement nécessaires. Les outils s’exécutent sur l’hôte Hermes, jamais silencieusement dans le navigateur Neptune. Ne prétends pas avoir manipulé l’onglet local de Neptune.`;
   const cleanMessages: ChatMessage[] = [
     { role: "system", content: system.slice(0, 16_000) },
     ...messages.slice(-18).map((message) => ({
@@ -158,7 +162,12 @@ export async function callHermesAgent(
         model,
         messages: cleanMessages,
         temperature: purpose === "browser-planning" ? 0.1 : 0.25,
-        stream: true
+        max_tokens: purpose === "browser-planning" ? 1_800 : 1_200,
+        stream: false,
+        model_options: {
+          reasoning: { enabled: purpose === "browser-planning" },
+          reasoning_effort: purpose === "browser-planning" ? "low" : "none"
+        }
       }),
       signal: combined
     });
@@ -182,12 +191,13 @@ export async function callHermesAgent(
   } catch (error) {
     if (combined.aborted) {
       dispatchHermesStatus("stopped", "Exécution Hermes interrompue");
-      throw new DOMException("La requête Hermes a été interrompue.", "AbortError");
+      throw new DOMException("Hermes a dépassé le délai de réponse. Neptune a arrêté proprement la requête.", "AbortError");
     }
     dispatchHermesStatus("error", error instanceof Error ? error.message : "Erreur Hermes");
     throw normalizeHermesNetworkError(error, endpoint);
   } finally {
     globalThis.clearTimeout(timeout);
+    globalThis.clearTimeout(slowNotice);
   }
 }
 
