@@ -10,55 +10,55 @@
 </head>
 <body>
   <h1>Politique de confidentialité de Neptune</h1>
-  <p>Version du 30 juillet 2026 — Neptune 1.8 Hermes Integrated.</p>
-  <p class="note">Hermes Agent est le cerveau local géré par défaut. Neptune l’installe et le configure automatiquement sur l’ordinateur. Aucune clé API commerciale, URL de serveur ou configuration CORS n’est demandée à l’utilisateur.</p>
+  <p>Version du 31 juillet 2026 — Neptune 2.0 Production.</p>
+  <p class="note">Neptune utilise par défaut un moteur d’intelligence installé sur l’ordinateur de l’utilisateur. Aucune clé API commerciale, URL de serveur ou configuration technique n’est demandée.</p>
 
   <h2>Données conservées localement</h2>
   <ul>
-    <li>prénom d’usage, voix choisie, niveau de contrôle et activation vocale ;</li>
+    <li>prénom d’usage, voix choisie, niveau de contrôle et préférence d’activation vocale ;</li>
     <li>historique conversationnel et journal des missions dans le profil Chrome ;</li>
-    <li>mission, checkpoint et état d’arrêt courant dans le stockage de session Chrome ;</li>
-    <li>identifiants techniques de continuité de session Hermes ;</li>
-    <li>sélection et cache éventuel des moteurs de secours ;</li>
-    <li>copies privées des fichiers vocaux embarqués dans OPFS ;</li>
-    <li>runtime Hermes, modèle local, journaux techniques et configuration dans le compte Windows courant.</li>
+    <li>mission, checkpoints, actions et état courant dans le stockage local de l’extension, afin de permettre une reprise après fermeture du panneau ou redémarrage de Chrome ;</li>
+    <li>identifiants techniques de continuité de session du moteur local ;</li>
+    <li>copies privées des fichiers vocaux embarqués dans le stockage OPFS de Chrome ;</li>
+    <li>moteur local, modèle, mémoire, configuration et journaux techniques dans le compte Windows courant.</li>
   </ul>
 
   <h2>Voix françaises embarquées</h2>
-  <p>La voix féminine Siwis et la voix masculine UPMC/Pierre, ainsi que Piper, le phonétiseur et les fichiers WebAssembly nécessaires, sont incluses dans le package de l’extension.</p>
+  <p>La voix féminine Siwis et la voix masculine UPMC/Pierre, ainsi que Piper, le phonétiseur et les fichiers WebAssembly nécessaires, sont inclus dans le package de l’extension.</p>
   <p>Au premier usage, Neptune copie ces ressources vers le stockage privé OPFS de Chrome et vérifie leur écriture avant la synthèse.</p>
-  <p>Le texte est transformé en audio dans un Web Worker de l’extension. Neptune n’envoie ni le texte à prononcer ni l’audio généré à un service distant de synthèse vocale. La voix Windows n’est pas utilisée dans le parcours normal.</p>
+  <p>Le texte est transformé en audio dans un Web Worker de l’extension. Neptune n’envoie ni le texte à prononcer ni l’audio généré à un service distant de synthèse vocale.</p>
 
-  <h2>Hermes Agent intégré</h2>
-  <p><code>NeptuneSetup.exe</code> installe automatiquement Hermes Agent, llama.cpp et le modèle Qwen3-4B Q4_K_M dans <code>%LOCALAPPDATA%\Neptune\Hermes</code>.</p>
-  <p>Hermes et le serveur de modèle écoutent uniquement sur l’interface locale <code>127.0.0.1</code>. Ils ne sont pas exposés au réseau local ni à Internet par Neptune.</p>
-  <p>Une clé aléatoire est générée localement. Elle est protégée par les droits du compte Windows courant et transmise à l’extension uniquement par le host Native Messaging autorisé pour l’identifiant fixe de Neptune. Elle est conservée dans le stockage de session Chrome pendant l’utilisation, et non affichée dans l’interface.</p>
-  <p>Les messages, observations utiles de la page et réponses sont traités par Hermes sur l’ordinateur. Hermes peut utiliser sa mémoire, ses compétences et ses outils locaux selon la mission demandée. Les actions dans l’onglet Chrome restent exécutées par Neptune et soumises à ses validations.</p>
-  <p>Les réponses Hermes sont reçues en flux. Le bouton Arrêter ferme le flux et interrompt l’exécution en cours.</p>
+  <h2>Moteur local intégré</h2>
+  <p><code>NeptuneSetup.exe</code> installe automatiquement Hermes Agent, llama.cpp et un modèle Qwen local dans <code>%LOCALAPPDATA%\Neptune\Hermes</code>. Ces noms techniques sont indiqués ici à des fins de transparence ; ils ne nécessitent aucune configuration par l’utilisateur.</p>
+  <p>Les services écoutent uniquement sur l’interface locale <code>127.0.0.1</code>. Neptune ne les expose pas au réseau local ni à Internet.</p>
+  <p>Une clé aléatoire est générée localement. Elle est protégée par les droits du compte Windows courant et transmise à l’extension uniquement par le pont Native Messaging autorisé pour l’identifiant fixe de Neptune. Elle n’est jamais affichée dans l’interface.</p>
+  <p>Les messages, observations nécessaires de la page et réponses sont traités sur l’ordinateur. Les actions dans Chrome restent exécutées par Neptune et soumises à ses règles de validation.</p>
 
-  <h2>Téléchargements au premier lancement</h2>
-  <p>L’installateur contacte les dépôts officiels de Nous Research, llama.cpp et Qwen/Hugging Face pour télécharger les composants nécessaires. Les archives llama.cpp et le modèle Qwen sont vérifiés par empreinte SHA-256 avant installation.</p>
-  <p>Après installation, l’usage courant du cerveau peut fonctionner localement. Les compétences Hermes qui réalisent volontairement une recherche web peuvent naturellement accéder aux sites nécessaires à la demande.</p>
-
-  <h2>Moteurs de secours facultatifs</h2>
-  <p>Un modèle navigateur local, Mammouth AI ou une API compatible OpenAI peut être choisi dans les paramètres avancés comme moteur de secours. Un fournisseur externe n’est utilisé qu’après cette sélection explicite ; ses messages et sa clé sont alors traités selon ses propres conditions.</p>
+  <h2>Téléchargements pendant l’installation</h2>
+  <p>L’installateur contacte les dépôts officiels des composants open source et du modèle local pour télécharger les éléments nécessaires. Les archives et modèles critiques sont vérifiés par empreinte SHA-256 avant installation.</p>
+  <p>Après installation, les conversations ordinaires peuvent être traitées localement. Une mission demandant explicitement une navigation ou une recherche web accède naturellement aux sites nécessaires à cette mission.</p>
 
   <h2>Activation vocale</h2>
-  <p>La permission microphone est demandée uniquement après une action explicite de l’utilisateur. Après autorisation, Neptune peut écouter les expressions « Neptune » et « OK Neptune » lorsque Chrome reste ouvert.</p>
-  <p>Si la permission est refusée ou fermée, l’accueil reste utilisable au clavier et propose de réessayer ultérieurement.</p>
+  <p>La permission microphone est demandée uniquement après une action explicite. Après autorisation, Neptune peut écouter les expressions « Neptune » et « OK Neptune » lorsque Chrome reste ouvert.</p>
+  <p>Si la permission est refusée, fermée ou indisponible, l’accueil reste utilisable au clavier et l’activation vocale peut être désactivée.</p>
 
   <h2>Permissions navigateur</h2>
   <p>L’accès aux sites est demandé avant la première mission nécessitant de lire ou manipuler une page. Neptune peut travailler dans la page actuelle, un nouvel onglet ou une nouvelle fenêtre selon la décision de l’utilisateur.</p>
-  <p>La permission <code>nativeMessaging</code> sert uniquement à communiquer avec le host local <code>com.neptune.hermes</code>, dont les commandes sont limitées à la vérification, au démarrage et à la réparation du runtime.</p>
+  <p>La permission <code>nativeMessaging</code> sert uniquement à communiquer avec le pont local <code>com.neptune.hermes</code>, dont les commandes sont limitées au contrôle d’état, au démarrage et à la réparation du moteur local.</p>
   <p>Les permissions <code>http://127.0.0.1/*</code> et <code>http://localhost/*</code> servent uniquement à joindre les composants locaux de Neptune.</p>
+  <p>La permission <code>alarms</code> sert aux contrôles périodiques de santé et à la reprise du moteur de mission. Elle n’est pas utilisée pour envoyer de la publicité ou suivre l’utilisateur.</p>
 
   <h2>Actions sensibles</h2>
   <p>Neptune refuse d’automatiser les paiements, achats, suppressions de compte, mots de passe, codes secrets, signatures, virements et contournements de CAPTCHA. Les communications externes exigent une autorisation explicite limitée à l’action concernée.</p>
+  <p>Lorsqu’une action externe est interrompue avant que Neptune puisse confirmer son résultat, la mission est mise en pause et demande une vérification humaine avant reprise afin d’éviter une exécution en double.</p>
+
+  <h2>Transmission et vente de données</h2>
+  <p>Neptune ne vend pas les données personnelles. La version locale de production n’envoie pas les conversations à un fournisseur publicitaire ou à un fournisseur d’intelligence artificielle tiers.</p>
 
   <h2>Suppression des données</h2>
-  <p>L’utilisateur peut effacer la conversation et le journal depuis les réglages. Les fichiers du runtime et les mémoires Hermes peuvent être supprimés en désinstallant Neptune puis en supprimant le dossier <code>%LOCALAPPDATA%\Neptune\Hermes</code>.</p>
+  <p>L’utilisateur peut effacer la conversation et le journal depuis les réglages. La suppression de l’extension efface ses données Chrome. La désinstallation de Neptune supprime le pont local ; les données restantes du moteur peuvent ensuite être supprimées depuis le programme de désinstallation Neptune.</p>
 
   <h2>Contact</h2>
-  <p>Responsable du produit : Neptune Business Club. Les coordonnées de contact et la version publique de cette politique doivent être renseignées sur la fiche Chrome Web Store avant publication.</p>
+  <p>Responsable du produit : Neptune Business Club. Les demandes relatives à la confidentialité peuvent être adressées au support via les coordonnées publiées sur le site officiel Neptune Business Club et sur la fiche Chrome Web Store.</p>
 </body>
 </html>

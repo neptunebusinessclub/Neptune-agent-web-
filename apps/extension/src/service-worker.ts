@@ -1,9 +1,18 @@
 import type { BrowserAction } from "@neptune/protocol";
+import {
+  ensureManagedHermes,
+  getManagedHermesStatus,
+  repairManagedHermes,
+  type ManagedHermesProgress
+} from "./managed-hermes-runtime";
 
 export {};
 
 type WorkspaceMode = "current-tab" | "new-tab" | "new-window";
 type WakeConfig = { wakeWord: "Neptune" | "OK Neptune"; wakeWordEnabled: boolean; language: string; oneShot: boolean };
+type AgentStateResource = "mission" | "preferences" | "messages" | "audit";
+type AgentMessageInput = { role: "user" | "assistant"; text: string; tone?: "normal" | "warning" | "permission" };
+type AgentAuditInput = { type: string; detail: string };
 type ExtensionRequest =
   | { type: "GET_STATUS" }
   | { type: "GET_ACTIVE_TAB" }
@@ -16,7 +25,19 @@ type ExtensionRequest =
   | { type: "STOP_WAKE_LISTENER" }
   | { type: "GET_WAKE_STATUS" }
   | { type: "BACKGROUND_WAKE_TRANSCRIPT"; transcript: string }
-  | { type: "WAKE_DOCUMENT_STATUS"; status: string; error?: string };
+  | { type: "WAKE_DOCUMENT_STATUS"; status: string; error?: string }
+  | { type: "GET_MANAGED_HERMES" }
+  | { type: "REPAIR_MANAGED_HERMES" }
+  | { type: "GET_MANAGED_HERMES_STATUS" }
+  | { type: "AGENT_START"; goal: string; workspaceMode?: WorkspaceMode; initialUrl?: string }
+  | { type: "AGENT_STOP"; reason?: string }
+  | { type: "AGENT_APPROVE" }
+  | { type: "AGENT_RESUME" }
+  | { type: "AGENT_STATUS" }
+  | { type: "AGENT_STATE_READ"; resource: AgentStateResource }
+  | { type: "AGENT_STATE_WRITE_MISSION"; mission: unknown }
+  | { type: "AGENT_STATE_APPEND_MESSAGE"; message: AgentMessageInput }
+  | { type: "AGENT_STATE_APPEND_AUDIT"; entry: AgentAuditInput };
 
 type BrowserError = {
   code: "HUMAN_VERIFICATION" | "AUTHENTICATION_REQUIRED" | "PAGE_PERMISSION" | "TARGET_NOT_FOUND" | "BROWSER_ACTION_FAILED" | "MISSION_STOPPED" | "NAVIGATION_TIMEOUT";
@@ -25,6 +46,9 @@ type BrowserError = {
   retryable: boolean;
 };
 type WakeStatus = { status: string; error?: string; updatedAt: string };
+type AgentMissionSummary = { id?: string; status?: string; updatedAt?: string };
+type StoredMessage = AgentMessageInput & { id: string; tone: "normal" | "warning" | "permission"; createdAt: string };
+type StoredAudit = AgentAuditInput & { id: string; occurredAt: string };
 
 const WORK_TAB_STORAGE_KEY = "neptuneWorkTabId";
 const WORK_MODE_STORAGE_KEY = "neptuneWorkMode";
@@ -32,18 +56,38 @@ const WAKE_STATUS_STORAGE_KEY = "neptune.backgroundWakeStatus.v1";
 const WAKE_CONFIG_STORAGE_KEY = "neptune.backgroundWakeConfig.v1";
 const PENDING_TRANSCRIPT_KEY = "neptune.pendingVoiceTranscript.v1";
 const ASSISTANT_WINDOW_KEY = "neptune.voiceAssistantWindowId.v1";
-const MISSION_CONTROL_KEY = "neptune.missionControl.v1";
+const MISSION_CONTROL_KEY = "neptune.missionControl.v2";
+const MISSION_STORAGE_KEY = "neptune.agent.mission.v3";
 const PREFERENCES_KEY = "neptune.preferences.v2";
+const MESSAGES_STORAGE_KEY = "neptune.messages.v2";
+const AUDIT_STORAGE_KEY = "neptune.audit.v2";
+const HERMES_STATUS_KEY = "neptune.hermes.status.v2";
 const OFFSCREEN_PATH = "offscreen.html";
 const SIDEPANEL_PATH = "sidepanel.html";
+const HERMES_HEALTH_ALARM = "neptune-hermes-health";
+const AGENT_RECOVERY_ALARM = "neptune-agent-recovery";
+const MAX_MESSAGES = 80;
+const MAX_AUDIT = 240;
+
 type MissionControl = { generation: number; status: "running" | "stopped"; updatedAt: string };
 let creatingOffscreen: Promise<void> | null = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  void restoreWakeListener();
+  scheduleSupervision();
+  void restoreBackgroundServices();
 });
-chrome.runtime.onStartup.addListener(() => void restoreWakeListener());
+chrome.runtime.onStartup.addListener(() => {
+  scheduleSupervision();
+  void restoreBackgroundServices();
+});
+chrome.runtime.onSuspend.addListener(() => {
+  void chrome.storage.session.set({ [HERMES_STATUS_KEY]: { ready: false, code: "SUSPENDED", detail: "Superviseur en veille", updatedAt: new Date().toISOString() } });
+});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === HERMES_HEALTH_ALARM) void superviseHermes();
+  if (alarm.name === AGENT_RECOVERY_ALARM) void restoreAgentRuntime();
+});
 chrome.commands.onCommand.addListener((command) => {
   if (command !== "activate-neptune") return;
   void chrome.windows.getLastFocused().then((window) => typeof window.id === "number" ? chrome.sidePanel.open({ windowId: window.id }) : undefined).catch(() => undefined);
@@ -52,7 +96,7 @@ chrome.tabs.onRemoved.addListener((tabId) => void clearWorkTabIfMatches(tabId));
 chrome.windows.onRemoved.addListener((windowId) => void clearAssistantWindowIfMatches(windowId));
 
 chrome.runtime.onMessage.addListener((request: ExtensionRequest & { target?: string }, _sender, sendResponse) => {
-  if (request?.target === "neptune-sidepanel" || request?.target === "neptune-offscreen") return false;
+  if (["neptune-sidepanel", "neptune-offscreen", "neptune-agent-runtime"].includes(request?.target ?? "")) return false;
   void handleRequest(request)
     .then((result) => sendResponse({ ok: true, result }))
     .catch((error: unknown) => sendResponse({ ok: false, error: classifyBrowserError(error) }));
@@ -63,7 +107,16 @@ async function handleRequest(request: ExtensionRequest): Promise<unknown> {
   switch (request.type) {
     case "GET_STATUS": {
       const control = await getMissionControl();
-      return { version: chrome.runtime.getManifest().version, stopped: control.status === "stopped", missionControl: control, workTab: publicTab(await getWorkTabIfPresent()), wake: await getWakeStatus() };
+      const hermes = await readHermesStatus();
+      return {
+        version: chrome.runtime.getManifest().version,
+        stopped: control.status === "stopped",
+        missionControl: control,
+        workTab: publicTab(await getWorkTabIfPresent()),
+        wake: await getWakeStatus(),
+        hermes,
+        mission: await readDurableMission()
+      };
     }
     case "GET_ACTIVE_TAB":
       return { tab: publicTab(await getActiveWebTab()) };
@@ -89,28 +142,158 @@ async function handleRequest(request: ExtensionRequest): Promise<unknown> {
       return handleBackgroundTranscript(request.transcript);
     case "WAKE_DOCUMENT_STATUS":
       return updateWakeStatus(request.status, request.error);
+    case "GET_MANAGED_HERMES":
+      return ensureHermes(false);
+    case "REPAIR_MANAGED_HERMES":
+      return ensureHermes(true);
+    case "GET_MANAGED_HERMES_STATUS":
+      return getManagedHermesStatus();
+    case "AGENT_START":
+      return startDurableAgent(request.goal, request.workspaceMode ?? "new-tab", request.initialUrl);
+    case "AGENT_STOP":
+      return stopDurableAgent(request.reason);
+    case "AGENT_APPROVE":
+      return commandDurableAgent("AGENT_APPROVE", true);
+    case "AGENT_RESUME":
+      return commandDurableAgent("AGENT_RESUME", true);
+    case "AGENT_STATUS":
+      return readDurableMission();
+    case "AGENT_STATE_READ":
+      return readAgentState(request.resource);
+    case "AGENT_STATE_WRITE_MISSION":
+      return persistAgentMission(request.mission);
+    case "AGENT_STATE_APPEND_MESSAGE":
+      return appendAgentMessage(request.message);
+    case "AGENT_STATE_APPEND_AUDIT":
+      return appendAgentAudit(request.entry);
   }
 }
 
-async function establishWorkspace(mode: WorkspaceMode, initialUrl?: string): Promise<chrome.tabs.Tab> {
-  let tab: chrome.tabs.Tab;
-  if (mode === "current-tab") {
-    tab = await getActiveWebTab();
-  } else if (mode === "new-window") {
-    const created = await chrome.windows.create({ url: safeInitialUrl(initialUrl), type: "normal", focused: true });
-    if (typeof created.id !== "number") throw new Error("BROWSER_ACTION_FAILED: impossible de créer la fenêtre de travail");
-    const tabs = await chrome.tabs.query({ windowId: created.id, active: true });
-    const createdTab = tabs[0];
-    const createdTabId = createdTab?.id;
-    if (!createdTab || typeof createdTabId !== "number") throw new Error("BROWSER_ACTION_FAILED: la nouvelle fenêtre ne contient aucun onglet");
-    tab = createdTab;
-    if (/^https?:\/\//i.test(tab.url ?? "")) await waitForTab(createdTabId, 30_000);
-  } else {
-    tab = await createWorkTab(initialUrl);
+async function ensureHermes(repair: boolean): Promise<unknown> {
+  const progress = (state: ManagedHermesProgress) => {
+    void chrome.storage.session.set({ [HERMES_STATUS_KEY]: { ready: false, code: state.phase, detail: state.detail, progress: state.progress, updatedAt: new Date().toISOString() } });
+    void chrome.runtime.sendMessage({ target: "neptune-sidepanel", type: "HERMES_STATUS", ...state }).catch(() => undefined);
+  };
+  const connection = repair ? await repairManagedHermes(progress) : await ensureManagedHermes(progress);
+  const status = { ready: true, code: "READY", detail: "Neptune est prêt.", progress: 100, updatedAt: new Date().toISOString() };
+  await chrome.storage.session.set({ [HERMES_STATUS_KEY]: status });
+  return connection;
+}
+
+async function superviseHermes(): Promise<void> {
+  const mission = await readDurableMission();
+  const active = mission && ["running", "awaiting_approval", "blocked"].includes(mission.status ?? "");
+  const status = await getManagedHermesStatus();
+  await chrome.storage.session.set({ [HERMES_STATUS_KEY]: { ...status, updatedAt: new Date().toISOString() } });
+  if (!status.ready && active) {
+    await ensureHermes(false).catch(async () => {
+      await ensureHermes(true).catch(() => undefined);
+    });
   }
-  if (typeof tab.id !== "number") throw new Error("BROWSER_ACTION_FAILED: aucun onglet de travail disponible");
-  await chrome.storage.session.set({ [WORK_TAB_STORAGE_KEY]: tab.id, [WORK_MODE_STORAGE_KEY]: mode });
-  return chrome.tabs.get(tab.id);
+}
+
+async function readHermesStatus(): Promise<unknown> {
+  const stored = await chrome.storage.session.get(HERMES_STATUS_KEY);
+  return stored[HERMES_STATUS_KEY] ?? { ready: false, code: "UNKNOWN", detail: "Vérification en attente" };
+}
+
+async function startDurableAgent(goal: string, workspaceMode: WorkspaceMode, initialUrl?: string): Promise<unknown> {
+  const clean = goal.replace(/\s+/g, " ").trim().slice(0, 10_000);
+  if (!clean) throw new Error("BROWSER_ACTION_FAILED: la mission est vide");
+  const control = await startMissionControl();
+  const tab = await establishWorkspace(workspaceMode, initialUrl);
+  await ensureOffscreenDocument();
+  const result = await sendToAgentRuntime({ target: "neptune-agent-runtime", type: "AGENT_START", goal: clean });
+  return { mission: unwrapOffscreenResult(result), tab: publicTab(tab), missionControl: control };
+}
+
+async function stopDurableAgent(reason?: string): Promise<unknown> {
+  const control = await stopMissionControl();
+  if (!(await hasOffscreenDocument())) return { mission: await readDurableMission(), missionControl: control };
+  const result = await sendToAgentRuntime({ target: "neptune-agent-runtime", type: "AGENT_STOP", ...(reason ? { reason } : {}) });
+  await closeOffscreenIfIdle();
+  return { mission: unwrapOffscreenResult(result), missionControl: control };
+}
+
+async function commandDurableAgent(type: "AGENT_APPROVE" | "AGENT_RESUME", resumeControl: boolean): Promise<unknown> {
+  if (resumeControl) await startMissionControl();
+  await ensureOffscreenDocument();
+  const result = await sendToAgentRuntime({ target: "neptune-agent-runtime", type });
+  return unwrapOffscreenResult(result);
+}
+
+async function restoreAgentRuntime(): Promise<void> {
+  const mission = await readDurableMission();
+  if (!mission || !["running", "awaiting_approval", "blocked"].includes(mission.status ?? "")) return;
+  await ensureOffscreenDocument();
+  await sendToAgentRuntime({ target: "neptune-agent-runtime", type: "AGENT_STATUS" }).catch(() => undefined);
+}
+
+async function readDurableMission(): Promise<AgentMissionSummary | null> {
+  const stored = await chrome.storage.local.get(MISSION_STORAGE_KEY);
+  const value = stored[MISSION_STORAGE_KEY];
+  return isMissionRecord(value) ? value : null;
+}
+
+async function readAgentState(resource: AgentStateResource): Promise<unknown> {
+  const key = resource === "mission"
+    ? MISSION_STORAGE_KEY
+    : resource === "preferences"
+      ? PREFERENCES_KEY
+      : resource === "messages"
+        ? MESSAGES_STORAGE_KEY
+        : AUDIT_STORAGE_KEY;
+  const stored = await chrome.storage.local.get(key);
+  return stored[key] ?? (resource === "messages" || resource === "audit" ? [] : null);
+}
+
+async function persistAgentMission(value: unknown): Promise<AgentMissionSummary> {
+  if (!isMissionRecord(value)) throw new Error("BROWSER_ACTION_FAILED: état de mission invalide");
+  const mission = { ...value, updatedAt: new Date().toISOString() };
+  await chrome.storage.local.set({ [MISSION_STORAGE_KEY]: mission });
+  await chrome.runtime.sendMessage({ target: "neptune-sidepanel", type: "AGENT_STATE_CHANGED", mission }).catch(() => undefined);
+  return mission;
+}
+
+async function appendAgentMessage(input: AgentMessageInput): Promise<StoredMessage[]> {
+  const text = typeof input?.text === "string" ? input.text.trim().slice(0, 12_000) : "";
+  if (!text || !["user", "assistant"].includes(input?.role)) throw new Error("BROWSER_ACTION_FAILED: message de mission invalide");
+  const stored = await chrome.storage.local.get(MESSAGES_STORAGE_KEY);
+  const current = Array.isArray(stored[MESSAGES_STORAGE_KEY]) ? stored[MESSAGES_STORAGE_KEY] as StoredMessage[] : [];
+  const message: StoredMessage = {
+    id: crypto.randomUUID(),
+    role: input.role,
+    text,
+    tone: input.tone === "warning" || input.tone === "permission" ? input.tone : "normal",
+    createdAt: new Date().toISOString()
+  };
+  const messages = [...current, message].slice(-MAX_MESSAGES);
+  await chrome.storage.local.set({ [MESSAGES_STORAGE_KEY]: messages });
+  return messages;
+}
+
+async function appendAgentAudit(input: AgentAuditInput): Promise<StoredAudit[]> {
+  const type = typeof input?.type === "string" ? input.type.trim().slice(0, 120) : "";
+  const detail = typeof input?.detail === "string" ? input.detail.trim().slice(0, 1_000) : "";
+  if (!type) throw new Error("BROWSER_ACTION_FAILED: événement de mission invalide");
+  const stored = await chrome.storage.local.get(AUDIT_STORAGE_KEY);
+  const current = Array.isArray(stored[AUDIT_STORAGE_KEY]) ? stored[AUDIT_STORAGE_KEY] as StoredAudit[] : [];
+  const audit = [...current, { id: crypto.randomUUID(), type, detail, occurredAt: new Date().toISOString() }].slice(-MAX_AUDIT);
+  await chrome.storage.local.set({ [AUDIT_STORAGE_KEY]: audit });
+  return audit;
+}
+
+function isMissionRecord(value: unknown): value is AgentMissionSummary & Record<string, unknown> {
+  if (!value || typeof value !== "object") return false;
+  const source = value as Record<string, unknown>;
+  return typeof source.id === "string" && typeof source.status === "string" && typeof source.updatedAt === "string";
+}
+
+function unwrapOffscreenResult(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const response = value as { ok?: boolean; result?: unknown; error?: string };
+  if (response.ok === false) throw new Error(response.error || "Le moteur de mission Neptune a échoué.");
+  return response.result ?? value;
 }
 
 async function executeAction(action: BrowserAction, approved: boolean): Promise<unknown> {
@@ -169,6 +352,27 @@ async function executeInWorkTab(action: BrowserAction): Promise<unknown> {
   return response.result ?? response;
 }
 
+async function establishWorkspace(mode: WorkspaceMode, initialUrl?: string): Promise<chrome.tabs.Tab> {
+  let tab: chrome.tabs.Tab;
+  if (mode === "current-tab") {
+    tab = await getActiveWebTab();
+  } else if (mode === "new-window") {
+    const created = await chrome.windows.create({ url: safeInitialUrl(initialUrl), type: "normal", focused: true });
+    if (typeof created.id !== "number") throw new Error("BROWSER_ACTION_FAILED: impossible de créer la fenêtre de travail");
+    const tabs = await chrome.tabs.query({ windowId: created.id, active: true });
+    const createdTab = tabs[0];
+    const createdTabId = createdTab?.id;
+    if (!createdTab || typeof createdTabId !== "number") throw new Error("BROWSER_ACTION_FAILED: la nouvelle fenêtre ne contient aucun onglet");
+    tab = createdTab;
+    if (/^https?:\/\//i.test(tab.url ?? "")) await waitForTab(createdTabId, 30_000);
+  } else {
+    tab = await createWorkTab(initialUrl);
+  }
+  if (typeof tab.id !== "number") throw new Error("BROWSER_ACTION_FAILED: aucun onglet de travail disponible");
+  await chrome.storage.session.set({ [WORK_TAB_STORAGE_KEY]: tab.id, [WORK_MODE_STORAGE_KEY]: mode });
+  return chrome.tabs.get(tab.id);
+}
+
 async function getMissionControl(): Promise<MissionControl> {
   const stored = await chrome.storage.session.get(MISSION_CONTROL_KEY);
   const value = stored[MISSION_CONTROL_KEY] as Partial<MissionControl> | undefined;
@@ -207,9 +411,7 @@ async function ensureContentScript(tabId: number): Promise<void> {
   try {
     const response = await chrome.tabs.sendMessage(tabId, { source: "NEPTUNE_AGENT", type: "PING" });
     if (response?.ok) return;
-  } catch {
-    // Injection contrôlée ci-dessous.
-  }
+  } catch { /* injection contrôlée */ }
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: ["content-script.js"] });
   } catch (error) {
@@ -316,11 +518,15 @@ async function pauseWakeListener(): Promise<Record<string, unknown>> {
 async function stopWakeListener(): Promise<Record<string, unknown>> {
   if (await hasOffscreenDocument()) {
     await sendToOffscreen({ target: "neptune-offscreen", type: "WAKE_STOP" }).catch(() => undefined);
-    await chrome.offscreen.closeDocument().catch(() => undefined);
   }
   await chrome.storage.session.remove([WAKE_CONFIG_STORAGE_KEY, PENDING_TRANSCRIPT_KEY]);
   await updateWakeStatus("stopped");
+  await closeOffscreenIfIdle();
   return { status: "stopped" };
+}
+
+async function restoreBackgroundServices(): Promise<void> {
+  await Promise.allSettled([restoreWakeListener(), restoreAgentRuntime(), superviseHermes()]);
 }
 
 async function restoreWakeListener(): Promise<void> {
@@ -374,8 +580,8 @@ async function ensureOffscreenDocument(): Promise<void> {
   if (creatingOffscreen) return creatingOffscreen;
   creatingOffscreen = chrome.offscreen.createDocument({
     url: OFFSCREEN_PATH,
-    reasons: [chrome.offscreen.Reason.USER_MEDIA],
-    justification: "Écouter le mot d’activation Neptune lorsque l’interface de l’extension est fermée."
+    reasons: [chrome.offscreen.Reason.USER_MEDIA, chrome.offscreen.Reason.WORKERS],
+    justification: "Maintenir l’activation vocale et le moteur de mission Neptune en arrière-plan."
   }).finally(() => { creatingOffscreen = null; });
   return creatingOffscreen;
 }
@@ -388,7 +594,20 @@ async function hasOffscreenDocument(): Promise<boolean> {
   return contexts.length > 0;
 }
 
+async function closeOffscreenIfIdle(): Promise<void> {
+  const [wake, mission] = await Promise.all([getWakeStatus(), readDurableMission()]);
+  const wakeActive = !["stopped", "unavailable", "error"].includes(wake.status);
+  const missionActive = Boolean(mission && ["running", "awaiting_approval", "blocked"].includes(mission.status ?? ""));
+  if (!wakeActive && !missionActive && await hasOffscreenDocument()) {
+    await chrome.offscreen.closeDocument().catch(() => undefined);
+  }
+}
+
 async function sendToOffscreen(payload: Record<string, unknown>): Promise<unknown> {
+  return chrome.runtime.sendMessage(payload);
+}
+
+async function sendToAgentRuntime(payload: Record<string, unknown>): Promise<unknown> {
   return chrome.runtime.sendMessage(payload);
 }
 
@@ -402,6 +621,11 @@ async function updateWakeStatus(status: string, error?: string): Promise<WakeSta
 async function getWakeStatus(): Promise<WakeStatus> {
   const stored = await chrome.storage.session.get(WAKE_STATUS_STORAGE_KEY);
   return stored[WAKE_STATUS_STORAGE_KEY] as WakeStatus | undefined ?? { status: "stopped", updatedAt: new Date(0).toISOString() };
+}
+
+function scheduleSupervision(): void {
+  void chrome.alarms.create(HERMES_HEALTH_ALARM, { periodInMinutes: 1 });
+  void chrome.alarms.create(AGENT_RECOVERY_ALARM, { periodInMinutes: 1 });
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

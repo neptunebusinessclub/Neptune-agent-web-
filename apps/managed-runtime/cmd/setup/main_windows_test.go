@@ -42,49 +42,40 @@ func TestPreparePayloadLeavesBinaryUntouched(t *testing.T) {
 }
 
 func TestBundledInstallerSeparatesBootstrapCommitFromHermesTag(t *testing.T) {
-	installer, err := payload.ReadFile("payload/install.ps1")
-	if err != nil {
-		t.Fatalf("read bundled install.ps1: %v", err)
-	}
-	text := string(installer)
+	installer := readPayload(t, "payload/install.ps1")
 
-	if !strings.Contains(text, "$HermesTag = 'v2026.7.7.2'") {
+	if !strings.Contains(installer, "$HermesTag = 'v2026.7.7.2'") {
 		t.Fatal("Hermes runtime release tag must remain pinned")
 	}
-	if !strings.Contains(text, "$HermesInstallerCommit = 'c9de69c6d5ed602059f5e9c9950c150e07b89212'") {
+	if !strings.Contains(installer, "$HermesInstallerCommit = 'c9de69c6d5ed602059f5e9c9950c150e07b89212'") {
 		t.Fatal("Hermes installer bootstrap must be pinned to the audited checkout-fix commit")
 	}
-	if strings.Contains(text, "hermes-agent/$HermesTag/scripts/install.ps1") {
+	if strings.Contains(installer, "hermes-agent/$HermesTag/scripts/install.ps1") {
 		t.Fatal("the broken installer bundled in the Hermes release tag must not be used as bootstrap")
 	}
-	if !strings.Contains(text, "hermes-agent/$HermesInstallerCommit/scripts/install.ps1") {
+	if !strings.Contains(installer, "hermes-agent/$HermesInstallerCommit/scripts/install.ps1") {
 		t.Fatal("installer bootstrap URL must use the dedicated audited commit")
 	}
-	if !strings.Contains(text, "Repair-InterruptedHermesInstall") {
+	if !strings.Contains(installer, "Repair-InterruptedHermesInstall") {
 		t.Fatal("interrupted ZIP fallback checkouts must be repaired automatically")
 	}
 }
 
 func TestBundledRandomKeyWorksInWindowsPowerShell51(t *testing.T) {
-	installer, err := payload.ReadFile("payload/install.ps1")
-	if err != nil {
-		t.Fatalf("read bundled install.ps1: %v", err)
-	}
-	text := string(installer)
-
-	if strings.Contains(text, "RandomNumberGenerator]::Fill") {
+	installer := readPayload(t, "payload/install.ps1")
+	if strings.Contains(installer, "RandomNumberGenerator]::Fill") {
 		t.Fatal("RandomNumberGenerator.Fill is unavailable in Windows PowerShell 5.1")
 	}
 
-	start := strings.Index(text, "function New-RandomKey")
+	start := strings.Index(installer, "function New-RandomKey")
 	if start < 0 {
 		t.Fatal("New-RandomKey function is missing")
 	}
-	endOffset := strings.Index(text[start:], "function Test-Endpoint")
+	endOffset := strings.Index(installer[start:], "function Test-Endpoint")
 	if endOffset < 0 {
 		t.Fatal("could not isolate New-RandomKey function")
 	}
-	functionSource := strings.TrimSpace(text[start : start+endOffset])
+	functionSource := strings.TrimSpace(installer[start : start+endOffset])
 
 	script := functionSource + `
 $key = New-RandomKey
@@ -110,33 +101,26 @@ Write-Output $key
 	}
 }
 
-func TestManagedHermesUsesAdaptiveContextWithoutPromptCache(t *testing.T) {
-	installer, err := payload.ReadFile("payload/install.ps1")
-	if err != nil {
-		t.Fatalf("read bundled install.ps1: %v", err)
-	}
-	runtime, err := payload.ReadFile("payload/start-runtime.ps1")
-	if err != nil {
-		t.Fatalf("read bundled start-runtime.ps1: %v", err)
-	}
-	installerText := string(installer)
-	runtimeText := string(runtime)
+func TestManagedEngineUsesAdaptiveContextWithoutPromptCache(t *testing.T) {
+	installer := readPayload(t, "payload/install.ps1")
+	runtime := readPayload(t, "payload/start-runtime.ps1")
 
 	for _, required := range []string{
 		"$MinimumHermesContext = 65536",
 		"context_length: $ContextLength",
-		"runtimeVersion = '1.8.4'",
+		"runtimeVersion = '2.0.0'",
 		"Le profil local compatible a été sélectionné automatiquement",
+		"clients2.google.com/service/update2/crx",
 	} {
-		if !strings.Contains(installerText, required) {
-			t.Fatalf("installer is missing the adaptive runtime contract: %s", required)
+		if !strings.Contains(installer, required) {
+			t.Fatalf("installer is missing the production runtime contract: %s", required)
 		}
 	}
 
 	for _, required := range []string{
 		"$FullContext = 65536",
 		"$CompactMinimumContext = 32000",
-		"$RuntimeVersion = '1.8.4'",
+		"$RuntimeVersion = '2.0.0'",
 		"'--cache-ram', '0'",
 		"'--ctx-checkpoints', '0'",
 		"'--fit', $Profile.Fit",
@@ -147,12 +131,72 @@ func TestManagedHermesUsesAdaptiveContextWithoutPromptCache(t *testing.T) {
 		"MINIMUM_CONTEXT_LENGTH = 32_000  # Neptune compact local mode",
 		"localMode = $localMode",
 	} {
-		if !strings.Contains(runtimeText, required) {
+		if !strings.Contains(runtime, required) {
 			t.Fatalf("runtime is missing adaptive context protection: %s", required)
 		}
 	}
 
-	if strings.Contains(runtimeText, "--cache-ram', '8192") {
+	if strings.Contains(runtime, "--cache-ram', '8192") {
 		t.Fatal("the 8 GiB llama.cpp prompt cache must never be enabled on 16 GB hosts")
 	}
+}
+
+func TestInstallerShipsNoTechWPFExperience(t *testing.T) {
+	ui := readPayload(t, "payload/installer-ui.ps1")
+	for _, required := range []string{
+		"Installation intelligente",
+		"Aucune clé API, commande terminal ou configuration technique",
+		"Ajouter Neptune à Chrome",
+		"latest-error.log",
+		"CreateNoWindow = $true",
+		"UninstallSource",
+	} {
+		if !strings.Contains(ui, required) {
+			t.Fatalf("GUI installer is missing the no-tech contract: %s", required)
+		}
+	}
+	if strings.Contains(ui, "chrome://extensions") || strings.Contains(ui, "Mode développeur") {
+		t.Fatal("the customer installer must not ask users to load an unpacked extension")
+	}
+}
+
+func TestInstallerEmbedsAndRegistersUninstaller(t *testing.T) {
+	uninstaller, err := payload.ReadFile("payload/NeptuneUninstall.exe")
+	if err != nil {
+		t.Fatalf("read embedded uninstaller: %v", err)
+	}
+	if len(uninstaller) < 100_000 || !bytes.HasPrefix(uninstaller, []byte{'M', 'Z'}) {
+		t.Fatal("embedded NeptuneUninstall.exe is missing or invalid")
+	}
+	installer := readPayload(t, "payload/install.ps1")
+	for _, required := range []string{
+		"UninstallSource",
+		"NeptuneUninstall.exe",
+		"CurrentVersion\\Uninstall\\Neptune",
+		"QuietUninstallString",
+		"Neptune Business Club",
+	} {
+		if !strings.Contains(installer, required) {
+			t.Fatalf("installer is missing uninstall registration: %s", required)
+		}
+	}
+}
+
+func TestStoreIdentityMatchesNativeHost(t *testing.T) {
+	if !strings.Contains(chromeStoreURL, "mhjkecpebpekcdbnhfmdiemlkfaafidh") {
+		t.Fatal("Chrome Web Store URL must preserve the extension ID derived from the manifest key")
+	}
+	installer := readPayload(t, "payload/install.ps1")
+	if !strings.Contains(installer, "$ExtensionId = 'mhjkecpebpekcdbnhfmdiemlkfaafidh'") {
+		t.Fatal("native host allowed origin does not match the Chrome Web Store identity")
+	}
+}
+
+func readPayload(t *testing.T, name string) string {
+	t.Helper()
+	content, err := payload.ReadFile(name)
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	return string(content)
 }
